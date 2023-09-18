@@ -1,0 +1,11 @@
+scikit-learn==1.2.2
+pandas==1.5.3
+pandas-gbq==0.19.2
+openpyxl==3.1.2
+matplotlib==3.7.1
+python-dotenv==1.0.0
+tableone==0.8.0
+ipywidgets==7.7.1
+jupyterlab
+seaborn
+tqdm

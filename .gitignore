@@ -1,0 +1,5 @@
+*.ipynb
+.env
+.vscode/
+output/
+.devcontainer.json
