@@ -6,10 +6,12 @@ import tempfile
 import json
 import os
 from tqdm import tqdm
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Union
 import warnings
 
 warnings.filterwarnings("ignore")
+
+CONFIGS = json.load(open(Path(__file__).parent / "config.json", "r"))
 
 
 def parse_race(values: pd.Series) -> pd.Series:
@@ -136,23 +138,60 @@ def extract(channel: str, etl: Callable, project_id: str):
 
 
 def cohort_etl(df: pd.DataFrame) -> pd.DataFrame:
+    def received_abg_at_T_etl(df):
+        df = df[
+            (
+                df.time_to_abg__minutes
+                <= CONFIGS["received_abg_at_T"]["CAPTURE_WINDOW_UPPER"]
+            )
+            & (
+                df.time_to_abg__minutes
+                > CONFIGS["received_abg_at_T"]["CAPTURE_WINDOW_LOWER"]
+            )
+        ]
+        df["received_abg_at_T"] = np.where(
+            df.time_to_abg__minutes.astype(float)
+            < df.time_to_abg__minutes.astype(float).median(),
+            1,
+            0,
+        )
+        df.received_abg_at_T = df.received_abg_at_T.astype("object")
+        return df
+
+    def volume_of_abg_etl(df):
+        df["abg_rate"] = df["volume_of_abg"] / df["duration__hours"]
+        df = df[df.abg_rate.notna()]
+        df["abg_rate_pc"] = np.where(df.abg_rate > df.abg_rate.median(), 1, 0)
+        df["abg_rate_pc"] = df["abg_rate_pc"].astype(object)
+        df = df.drop(["abg_rate"], axis=1)
+        return df
+
+    CONFIGS = load_configs()
+
+    # Proxies are defined here.
+    if CONFIGS["PROXY"] == ["abg_rate_pc"]:
+        df = volume_of_abg_etl(df)
+    elif CONFIGS["PROXY"] == ["received_abg_at_T"]:
+        df = received_abg_at_T_etl(df)
+    else:
+        raise ValueError("PROXY not found.")
+    df = df.reset_index(drop=True)
+
     df["race"] = parse_race(df.race)
     df["language"] = parse_language(df.language)
     df["insurance"] = parse_insurance(df.insurance)
     df["careunit"] = parse_careunit(df.first_careunit)
     df["time_of_day"] = parse_time(df.starttime)
-    df["received_abg_at_T"] = np.where(
-        df.time_to_abg__minutes.astype(float) < 6 * 60, 1, 0
-    )
+
     df.los_icu = df.los_icu.astype(float)
     df.admission_age = df.admission_age.astype(float)
 
     df.hospital_expire_flag = df.hospital_expire_flag.astype("object")
-    df.received_abg_at_T = df.received_abg_at_T.astype("object")
 
     to_drop = [
         "first_careunit",
         "time_to_abg__minutes",
+        "volume_of_abg",
         "admission_location",
         "starttime",
     ]
@@ -203,7 +242,7 @@ def comorbidities_etl(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([df[["stay_id", "charlson_comorbidity_index"]], temp], axis=1)
 
 
-MAPPINGS = {
+ETLS = {
     "cohort": cohort_etl,
     "gcs": gcs_etl,
     "vitals": vitals_etl,
@@ -214,14 +253,14 @@ MAPPINGS = {
 
 
 def load(channel: str, project_id: str) -> pd.DataFrame:
-    return extract(channel, MAPPINGS[channel], project_id)
+    return extract(channel, ETLS[channel], project_id)
 
 
 def begin_workshop(project_id: str):
     TEMP = Path(tempfile.gettempdir()) / "dpsdc"
     PROFILES = {"categorical": [], "ordinal": [], "continuous": []}
     CHANNELS = {}
-    pbar = tqdm(MAPPINGS.items())
+    pbar = tqdm(ETLS.items())
     for channel, etl in pbar:
         pbar.set_description(channel)
         data = extract(channel, etl, project_id)
@@ -237,6 +276,10 @@ def begin_workshop(project_id: str):
         json.dump(CHANNELS, file)
 
 
+def load_configs():
+    return json.load(open(Path(__file__).parent / "config.json", "r"))
+
+
 def load_profiles():
     TEMP = Path(tempfile.gettempdir()) / "dpsdc"
     with open(TEMP / "PROFILES.json", "r") as file:
@@ -244,14 +287,21 @@ def load_profiles():
     return PROFILES
 
 
-def load_channels():
+def load_channels(channels: Optional[List[str]] = None):
     TEMP = Path(tempfile.gettempdir()) / "dpsdc"
     with open(TEMP / "CHANNELS.json", "r") as file:
         CHANNELS = json.load(file)
-    return CHANNELS
+
+    if isinstance(channels, list):
+        output = []
+        [output := output + CHANNELS[channel] for channel in channels]
+    else:
+        output = CHANNELS
+
+    return output
 
 
-def load_view(features: List[str], project_id: Optional[str]) -> pd.DataFrame:
+def load_view(features: Optional[List[str]], project_id: Optional[str]) -> pd.DataFrame:
     channel = load_channels()
     features = set(features)
     sample = []

@@ -1,0 +1,38 @@
+{
+    "PROXY": [
+        "abg_rate_pc"
+    ],
+    "TRADITIONAL_LABELS": [
+        "race",
+        "gender",
+        "language",
+        "insurance"
+    ],
+    "VARIABLES": [
+        "SOFA",
+        "charlson_comorbidity_index",
+        "admission_age",
+        "spo2_mean"
+    ],
+    "OUTCOMES": [
+        "hospital_death"
+    ],
+    "received_abg_at_T": {
+        "CAPTURE_WINDOW_LOWER": 0,
+        "CAPTURE_WINDOW_UPPER": 60,
+        "COVARIATES": true
+    },
+    "abg_rate_pc": {
+        "LIMIT_UNIT_TO": [
+            "Cardiac"
+        ]
+    },
+    "N_REPEATS": 1,
+    "RANDOM_STATE": 0,
+    "TEST_SIZE": 0.25,
+    "COVARIATES_CHANNELS": [
+        "vitals",
+        "lab"
+    ],
+    "N_COMPONENTS": 0.75
+}

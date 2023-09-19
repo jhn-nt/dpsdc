@@ -3,3 +3,5 @@
 .vscode/
 output/
 .devcontainer.json
+*.pyc
+dpsdc/__pycache__/
