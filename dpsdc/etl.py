@@ -6,7 +6,7 @@ import tempfile
 import json
 import os
 from tqdm import tqdm
-from typing import List, Optional, Callable, Union
+from typing import List, Optional, Callable, Union, Dict, Any
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -25,7 +25,7 @@ def parse_race(values: pd.Series) -> pd.Series:
         values (pd.Series): Input Series.
 
     Returns:
-        pd.Series: Parse Series.
+        pd.Series: Parsed Series.
     """
     mapped_values = np.empty(values.shape[0]) * np.nan
     mapping = {
@@ -42,6 +42,14 @@ def parse_race(values: pd.Series) -> pd.Series:
 
 
 def parse_language(values: pd.Series) -> pd.Series:
+    """Parses MIMIC-IV patients' spoken language.
+
+    Args:
+        values (pd.Series): Input Series.
+
+    Returns:
+        pd.Series: Parsed Series.
+    """
     mapped_values = np.empty(values.shape[0]) * np.nan
     mapping = {"English": "(ENGLISH)", "Other": "(\?)"}
 
@@ -51,6 +59,14 @@ def parse_language(values: pd.Series) -> pd.Series:
 
 
 def parse_insurance(values: pd.Series) -> pd.Series:
+    """Parses MIMIC-IV patients'Insurance.
+
+    Args:
+        values (pd.Series): Input Series.
+
+    Returns:
+        pd.Series: Parsed Series.
+    """
     mapped_values = np.empty(values.shape[0]) * np.nan
     mapping = {
         "Medicaid": "(Medicaid)",
@@ -89,6 +105,18 @@ def parse_careunit(values: pd.Series) -> pd.Series:
 
 
 def parse_time(values: pd.Series) -> pd.Series:
+    """Parses MIMIC-IV patients'time of intervention according to Yarnell et al.
+
+    Yarnell, Christopher J., Alistair Johnson, Tariq Dam, Annemijn Jonkman, Kuan Liu, Hannah Wunsch, Laurent Brochard, et al. 2023.
+    “Do Thresholds for Invasive Ventilation in Hypoxemic Respiratory Failure Exist? A Cohort Study.”
+    American Journal of Respiratory and Critical Care Medicine 207 (3): 271–82.
+
+    Args:
+        values (pd.Series): Input Series.
+
+    Returns:
+        pd.Series: Parsed Series.
+    """
     mapped_values = np.empty(values.shape[0]) * np.nan
     mapping = {
         "00-06": (0, 6),
@@ -103,18 +131,18 @@ def parse_time(values: pd.Series) -> pd.Series:
     return mapped_values.astype(str)
 
 
-def extract(channel: str, etl: Callable, project_id: str):
-    """Pulls data from Big Query.
-    It requires for the project to have access to the MIMIC-IV.
-    Learn more at
+def extract(channel: str, etl: Callable, project_id: str) -> pd.DataFrame:
+    """Executes a query from BigQuery.
+    In order to collect data, the associated proejct_id and user must have been granted to access MIMIC-IV.
+    See: https://mimic.mit.edu/
 
     Args:
-        channel (str): _description_
-        etl (Callable): _description_
-        project_id (str): _description_
+        channel (str): Name of a SQL-procedure contained in dpdsc/procedures/
+        etl (Callable): Callable to be called on the collected query data.
+        project_id (str): Google Cloud Project ID.
 
     Returns:
-        _type_: _description_
+        pd.DataFrame: Processed data.
     """
     WORKDIR = Path(os.path.join(os.path.dirname(__file__)))
     TEMP = Path(tempfile.gettempdir()) / "dpsdc"
@@ -163,7 +191,7 @@ def cohort_etl(df: pd.DataFrame) -> pd.DataFrame:
         df = df[df.abg_rate.notna()]
         df["abg_rate_pc"] = np.where(df.abg_rate > df.abg_rate.median(), 1, 0)
         df["abg_rate_pc"] = df["abg_rate_pc"].astype(object)
-        df = df.drop(["abg_rate"], axis=1)
+        # df = df.drop(["abg_rate"], axis=1)
         return df
 
     CONFIGS = load_configs()
@@ -253,10 +281,29 @@ ETLS = {
 
 
 def load(channel: str, project_id: str) -> pd.DataFrame:
+    """Lazy wrapper of methodt extract.
+
+    This method automatically assigns an etl to its corrisponding channel based on the dictionary ETL.
+
+    Args:
+        channel (str): Name of a SQL-procedure contained in dpdsc/procedures/
+        project_id (str): Google Cloud Project ID.
+
+    Returns:
+        pd.DataFrame: Processed data.
+    """
     return extract(channel, ETLS[channel], project_id)
 
 
 def begin_workshop(project_id: str):
+    """Intitializes all variables required to run main.py.
+
+    This method generates a temp folder with the data, features and settings to be used when running main.py.
+
+
+    Args:
+        project_id (str): Google Cloud Project ID.
+    """
     TEMP = Path(tempfile.gettempdir()) / "dpsdc"
     PROFILES = {"categorical": [], "ordinal": [], "continuous": []}
     CHANNELS = {}
@@ -276,18 +323,40 @@ def begin_workshop(project_id: str):
         json.dump(CHANNELS, file)
 
 
-def load_configs():
+def load_configs() -> Dict[str, Any]:
+    """User defined configs loader.
+
+    Returns:
+        Dict[str, Any]: User defined configuration dictionary.
+    """
     return json.load(open(Path(__file__).parent / "config.json", "r"))
 
 
-def load_profiles():
+def load_profiles() -> Dict[str, List[str]]:
+    """Returns the profilation dictionary of all features in the project.
+
+    Features are profiled in one of three categories: categorical, continuous or ordinal.
+
+    Returns:
+        Dict[str, List[str]]: Features profile dictionary.
+    """
     TEMP = Path(tempfile.gettempdir()) / "dpsdc"
     with open(TEMP / "PROFILES.json", "r") as file:
         PROFILES = json.load(file)
     return PROFILES
 
 
-def load_channels(channels: Optional[List[str]] = None):
+def load_channels(
+    channels: Optional[List[str]] = None,
+) -> Union[Dict[str, List[str]], List[str]]:
+    """Returns the list of features contained in input channels.
+
+    Args:
+        channels (Optional[List[str]], optional): A list of channels, aka the name(s) of a SQL-procedure contained in dpdsc/procedures/. Defaults to None.
+
+    Returns:
+        Union[Dict[str, List[str]], List[str]]: If channels is None, returns a dictionary with all channels features, otherwise solely those requested by the user.
+    """
     TEMP = Path(tempfile.gettempdir()) / "dpsdc"
     with open(TEMP / "CHANNELS.json", "r") as file:
         CHANNELS = json.load(file)

@@ -5,3 +5,5 @@ output/
 .devcontainer.json
 *.pyc
 dpsdc/__pycache__/
+__pycache__/
+dpsdc/dashboard.py

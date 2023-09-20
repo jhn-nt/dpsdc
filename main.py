@@ -18,7 +18,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
 import numpy as np
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, RepeatedKFold
+from sklearn.preprocessing import OneHotEncoder
 
 
 from dotenv import dotenv_values
@@ -83,6 +84,55 @@ def discrete_multivariate_histogram(dataset: pd.DataFrame, x: str, hue: str):
     _ = ax[0].set_title("Count")
     _ = ax[1].set_title("Probability")
     _ = ax[2].set_title("Proportion")
+    return fig
+
+
+def relative_frequency_matrix(dataset: pd.DataFrame):
+    ohe = OneHotEncoder()
+    ohe_data = ohe.fit_transform(dataset).todense()
+
+    mc = []
+    for ix, _ in RepeatedKFold().split(ohe_data):
+        data = ohe_data[ix, :]
+        n_i_j = np.matmul(data.T, data)
+        norm = np.broadcast_to(np.diag(n_i_j), n_i_j.shape)
+        mc.append(np.expand_dims(n_i_j / norm, axis=0))
+
+    mc = np.concatenate(mc, axis=0)
+    corr_mean = pd.DataFrame(
+        mc.mean(axis=0),
+        index=ohe.get_feature_names_out(),
+        columns=ohe.get_feature_names_out(),
+    )
+    corr_std = pd.DataFrame(
+        mc.std(axis=0),
+        index=ohe.get_feature_names_out(),
+        columns=ohe.get_feature_names_out(),
+    )
+
+    fig, ax = plt.subplots(figsize=(15, 15))
+    _ = ax.imshow(corr_mean)
+    _ = ax.set_xticks(np.arange(corr_mean.shape[0]))
+    _ = ax.set_yticks(np.arange(corr_mean.shape[0]))
+    _ = ax.set_xticklabels(corr_mean.columns, rotation=90)
+    _ = ax.set_yticklabels(corr_mean.columns)
+    _ = ax.set_title("Relative Frequency Matrix")
+
+    for i, j in product(range(corr_mean.shape[0]), range(corr_mean.shape[0])):
+        if corr_mean.iloc[i, j] < 0.25:
+            color = "w"
+        else:
+            color = "k"
+
+        _ = ax.text(
+            j,
+            i,
+            f"{100*corr_mean.iloc[i,j]:.1f}%",
+            ha="center",
+            va="center",
+            color=color,
+        )
+
     return fig
 
 
@@ -167,5 +217,10 @@ if __name__ == "__main__":
         pdf.savefig(rf_outcome.plot_curves())
         print("11. Model Tracing 4/4")
 
+        pdf.savefig(
+            relative_frequency_matrix(dataset[categorical_features(STATS_FEATURES)])
+        )
+        print("12. relative Frequency")
 
-print("12. Report Generation Completed")
+
+print("13. Report Generation Completed")

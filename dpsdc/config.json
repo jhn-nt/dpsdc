@@ -22,11 +22,7 @@
         "CAPTURE_WINDOW_UPPER": 60,
         "COVARIATES": true
     },
-    "abg_rate_pc": {
-        "LIMIT_UNIT_TO": [
-            "Cardiac"
-        ]
-    },
+    "abg_rate_pc": {},
     "N_REPEATS": 1,
     "RANDOM_STATE": 0,
     "TEST_SIZE": 0.25,
