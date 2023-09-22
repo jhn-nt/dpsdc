@@ -1,5 +1,9 @@
-# Disparity Proxies and Social Determinants of Care Workshp
-## 
+# Disparity Proxies and Social Determinants of Care Workshop
+## Philippine Datathon 2023
+### _De La Salle University, Taft Avenue, Malate, Manila_
+#### September 29th - 1st October 2023
+
+### Introduction
 
 Invasive Mechnical Ventilation (IMV) is a complex treatment administered to ICU patients' with insufficient respiratory function.  
 After intubation, IMV patients are closely monitored to ensure adequate oxygenation and ventilation. Several tools are available to assess the efficacy of IMV, and guidelines offer clear indications on their usage.   
@@ -8,7 +12,7 @@ It is our responsability as investigators to analyze data and formulate robust h
 The following workshop is based on the MIMIC-IV database [1].
 
 
-In this repo you will find all the code necessay to genarate the tables and analysis used during the workshop.
+In this repo you will find all the code necessay to generate the tables and analysis used during the workshop.
 
 
 
