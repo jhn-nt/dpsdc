@@ -16,5 +16,7 @@ setup(
         "shap",
         "tableone",
         "pandas-gbq",
+        "cross-learn @ git+https://github.com/jhn-nt/cross-learn.git"
     ],
 )
+
