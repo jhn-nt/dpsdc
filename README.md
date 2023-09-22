@@ -1,4 +1,4 @@
-# Disparity Proxies and Social Determinants of Care Workshp
+# Disparity Proxies and Social Determinants of Care Workshop
 ## 
 
 Invasive Mechnical Ventilation (IMV) is a complex treatment administered to ICU patients' with insufficient respiratory function.  
@@ -8,7 +8,7 @@ It is our responsability as investigators to analyze data and formulate robust h
 The following workshop is based on the MIMIC-IV database [1].
 
 
-In this repo you will find all the code necessay to genarate the tables and analysis used during the workshop.
+In this repo you will find all the code necessay to generate the tables and analysis used during the workshop.
 
 
 
