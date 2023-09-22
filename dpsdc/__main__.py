@@ -1,11 +1,11 @@
-from etl import (
+from .etl import (
     begin_workshop,
     load_view,
     categorical_features,
     load_channels,
     load_configs,
 )
-from models import LogisticRegressionModel, RandomForestModel
+
 
 from tableone import TableOne
 import json
@@ -23,7 +23,6 @@ from sklearn.model_selection import train_test_split, RepeatedKFold
 from sklearn.preprocessing import OneHotEncoder
 
 
-from dotenv import dotenv_values
 from pathlib import Path
 import argparse
 from itertools import product
@@ -40,16 +39,6 @@ args = parser.parse_args()
 
 
 CONFIGS = load_configs()
-
-STATS_FEATURES = (
-    CONFIGS["OUTCOMES"]
-    + CONFIGS["PROXY"]
-    + CONFIGS["TRADITIONAL_LABELS"]
-    + CONFIGS["VARIABLES"]
-)
-COVARIATES = load_channels(CONFIGS["COVARIATES_CHANNELS"])
-ALL_FEATURES = STATS_FEATURES + COVARIATES
-
 OUTPUT_PATH = Path(args.dir)
 PROJECT_ID = args.project_id
 
@@ -153,6 +142,18 @@ if __name__ == "__main__":
         os.makedirs(OUTPUT_PATH)
 
     begin_workshop(PROJECT_ID)
+    # models module requires for begin_workshop to have been sucessfully called at least once.
+    from .models import LogisticRegressionModel, RandomForestModel
+
+    STATS_FEATURES = (
+        CONFIGS["OUTCOMES"]
+        + CONFIGS["PROXY"]
+        + CONFIGS["TRADITIONAL_LABELS"]
+        + CONFIGS["VARIABLES"]
+    )
+    COVARIATES = load_channels(CONFIGS["COVARIATES_CHANNELS"])
+    ALL_FEATURES = STATS_FEATURES + COVARIATES
+
     print("1. Initialization")
 
     dataset = load_view(ALL_FEATURES, None)
@@ -235,7 +236,7 @@ if __name__ == "__main__":
         pdf.savefig(
             relative_frequency_matrix(dataset[categorical_features(STATS_FEATURES)])
         )
-        print("12. relative Frequency")
+        print("12. Relative Frequency Table")
 
 
 print("13. Report Generation Completed")
