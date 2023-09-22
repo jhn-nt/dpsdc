@@ -1,5 +1,9 @@
 # Disparity Proxies and Social Determinants of Care Workshop
-## 
+## Thailand Health AI Symposium
+### _Khon Kaen University_
+#### October 6th, 2023
+
+### Introduction
 
 Invasive Mechnical Ventilation (IMV) is a complex treatment administered to ICU patients' with insufficient respiratory function.  
 After intubation, IMV patients are closely monitored to ensure adequate oxygenation and ventilation. Several tools are available to assess the efficacy of IMV, and guidelines offer clear indications on their usage.   
