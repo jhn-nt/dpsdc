@@ -23,7 +23,7 @@ In this repo you will find all the code necessay to generate the tables and anal
 __Important Note__: The google account enabled to access the MIMIC-IV must the be _same_ as the one associated with the Google Project.  
 
 ### Installation
-1. run `pip install "git+https://github.com/jhn-nt/dpsdc.git"`
+1. run `pip install "git+https://github.com/jhn-nt/dpsdc.git@ph_datathon_2023"`
 
 ### User Guide
 Generating the report in folder `<working-directory>/output/`:
