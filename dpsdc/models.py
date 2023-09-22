@@ -21,8 +21,8 @@ import seaborn as sns
 from matplotlib import cm
 import matplotlib.pyplot as plt
 
-from .etl import categorical_features, continuous_features, ordinal_features
-from .etl import load_channels, load_configs
+from etl import categorical_features, continuous_features, ordinal_features
+from etl import load_channels, load_configs
 
 from typing import List
 
