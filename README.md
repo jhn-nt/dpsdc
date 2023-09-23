@@ -44,6 +44,12 @@ To remove all temporary data run:
 python3 -m  dpsdc.reset
 ```
 
+### Citation
+For those who desire to use the codebase from this repo in future projects, you can cite this workshop via the following:
+```bibtex
+Angelotti, G. (2023). Disparity Proxies and Social Determinants of Care Workshop. (Version 0.1) [Computer software]. https://github.com/jhn-nt/dpsdc
+```
+
 ### Acknowledgements
 
 1. [Johnson, Alistair, et al. "Mimic-iv." PhysioNet. Available online at: https://physionet. org/content/mimiciv/1.0/(accessed August 23, 2021) (2020).](https://physionet.org/content/mimiciv/2.1/)
