@@ -8,7 +8,7 @@ It is our responsability as investigators to analyze data and formulate robust h
 The following workshop is based on the MIMIC-IV database [1].
 
 
-In this repo you will find all the code necessay to generate the tables and analysis used during the workshop.
+In this repo you will find all the code necessary to generate the tables and analysis used during the workshop.
 
 
 
@@ -38,6 +38,32 @@ Data will be downloaded only the first time that the package is run then stored 
 To remove all temporary data run:
  ```python
 python3 -m  dpsdc.reset
+```
+
+For those who wish play directly with the data, here is a selected set of commands that can be used in jupyter or colab notebooks:
+ ```python
+from dpsdc.etl import begin_workshop
+from dpsdc.etl import load_profiles, load_view
+
+# Initialization, required to download and process the data
+begin_workshop(PROJECT_ID)
+
+# Requesting all the features available in the workshop in the PORFILES dictionary.
+PROFILES=load_profiles() 
+
+# PROFILES maps features based on their nature: categorical, continuous or ordinal.
+CATEGORICAL_FEATURES=PROFILES["categorical"]
+CONTINUOUS_FEATURES=PROFILES["continuous"]
+ORDINAL_FEATURES=PROFILES["ordinal"]
+
+# Loading a data view based on user defined features into a pandas dataframe.
+dataset=load_view(["admission_age","SOFA","hospital_death"],PROJECT_ID) 
+```
+
+### Citation
+For those who desire to use the codebase from this repo in future projects, you can cite this workshop via the following:
+```bibtex
+Angelotti, G. (2023). Disparity Proxies and Social Determinants of Care Workshop. (Version 0.1) [Computer software]. https://github.com/jhn-nt/dpsdc
 ```
 
 ### Acknowledgements
