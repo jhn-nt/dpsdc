@@ -7,7 +7,7 @@
 
 Invasive Mechnical Ventilation (IMV) is a complex treatment administered to ICU patients' with insufficient respiratory function.  
 After intubation, IMV patients are closely monitored to ensure adequate oxygenation and ventilation. Several tools are available to assess the efficacy of IMV, and guidelines offer clear indications on their usage.   
-Nevertheless, a wealth of evidence from reasearch [2][3][4] highlights how disadvantaged groups may experience unfair disparities in the quality of medical care they receive.  
+Nevertheless, a wealth of evidence from research [2][3][4] highlights how disadvantaged groups may experience unfair disparities in the quality of medical care they receive.  
 It is our responsability as investigators to analyze data and formulate robust hypotheses to identify these disparities transparently, collaboratively and reproducibly.  
 The following workshop is based on the MIMIC-IV database [1].
 
