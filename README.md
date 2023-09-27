@@ -1,6 +1,6 @@
 # Disparity Proxies and Social Determinants of Care Workshop
 ## Philippine Datathon 2023
-### _De La Salle University, Taft Avenue, Malate, Manila_
+### _De La Salle University, Manila_
 #### September 29th - 1st October 2023
 
 ### Introduction
