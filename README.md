@@ -40,7 +40,7 @@ To remove all temporary data run:
 python3 -m  dpsdc.reset
 ```
 
-For those who wish play directly with the data, here is a selected set of commands that can be used in jupyter or colab notebooks:
+You can also navigate the data on your own; here is a selected set of commands that can be used in jupyter or colab notebooks:
  ```python
 from dpsdc.etl import begin_workshop
 from dpsdc.etl import load_profiles, load_view
