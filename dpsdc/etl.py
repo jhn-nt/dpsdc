@@ -131,6 +131,45 @@ def parse_time(values: pd.Series) -> pd.Series:
     return mapped_values.astype(str)
 
 
+def parse_bmi(values: pd.Series) -> str:
+    """BMI Classification.
+    Source: Weir, Connor B., and Arif Jan. "BMI classification percentile and cut off points." (2019).
+
+    Args:
+        bmi_and_race (pd.Series): A series with at leastan index called bmi and one called race.
+
+    Returns:
+        str: BMI classification.
+    """
+
+    bmi=values.bmi
+    ethnicity=values.race
+
+    output = bmi
+    if bmi < 16.5:
+        output= "Severly Underweight"
+    elif bmi >= 16.5 and bmi < 18.5:
+        output = "Underweight"
+    elif bmi >= 18.5:
+        if "asian" in ethnicity.lower():
+            if bmi >= 18.5 and bmi < 23.0:
+                output = "Normal"
+            elif bmi >= 23.0 and bmi < 25.0:
+                output = "Overweight"
+            elif bmi >= 25.0:
+                output="Obesity"
+        else:
+            if bmi >= 18.5 and bmi < 25.0:
+                output = "Normal"
+            elif bmi >= 25.0 and bmi < 30.0:
+                output = "Overweight"
+            elif bmi >= 30.0:
+                output = "Obesity"
+    else:
+        output = "Unknown or Unavailable"
+    return output
+
+
 def extract(channel: str, etl: Callable, project_id: str) -> pd.DataFrame:
     """Executes a query from BigQuery.
     In order to collect data, the associated proejct_id and user must have been granted to access MIMIC-IV.
