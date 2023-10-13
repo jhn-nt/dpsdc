@@ -11,7 +11,7 @@ SELECT
   admissions.admission_location,
   patients.anchor_year_group,
   height.height,
-  weight.weight,
+  weight.weight
 FROM `physionet-data.mimiciv_derived.icustay_detail`icu 
 INNER JOIN `physionet-data.mimiciv_hosp.admissions` admissions ON admissions.hadm_id=icu.hadm_id
 INNER JOIN `physionet-data.mimiciv_icu.icustays` icustays ON icustays.stay_id=icu.stay_id

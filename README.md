@@ -24,12 +24,12 @@ __Important Note__: The google account enabled to access the MIMIC-IV must the b
 ### User Guide
 Generating the report in folder `<working-directory>/output/`:
 ```python
-python3 -m dpsdc -p <your project-id>
+python3 -m dpsdc <your project-id> -c <path/to/cohort/query>  -p <path/to/proxy/query>
 ```
 
 Generating the report into a user defined folder:
  ```python
-python3 -m  dpsdc -d <path/to/folder> -p <your project-id> 
+python3 -m  dpsdc -d <path/to/folder> <your project-id>
 ```
 
 You will be prompted to authorize pandas GBQ to access your Google Account for the scope of the query.
