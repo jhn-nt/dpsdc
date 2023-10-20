@@ -27,7 +27,7 @@ APP_PATH.setup()
 OUTPUT_PATH = Path(args.dir)
 COHORT_PATH = Path(args.cohort)
 PROXY_PATH = Path(args.proxy)
-PROCEDURES_PATH = Path("./dpsdc/procedures/")
+PROCEDURES_PATH = Path(__file__).parent / "procedures"
 
 TARGET_FOLDER = sha256((str(COHORT_PATH) + str(PROXY_PATH)).encode()).hexdigest()
 DATA_PATH = Path(APP_PATH.app_data_path) / TARGET_FOLDER
