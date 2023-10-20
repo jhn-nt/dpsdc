@@ -11,13 +11,13 @@ from typing import List, Union
 from .loaders import load_table_one
 from tableone import TableOne
 from hashlib import sha256
-
+__file__
 
 parser = ArgumentParser()
 parser.add_argument("-d", "--dir", action="store", default="./output")
 parser.add_argument("-p", "--project-id", action="store", required=True)
-parser.add_argument("-c", "--cohort", action="store", default="./dpsdc/experiments/turnings/criteria.sql")
-parser.add_argument("-dp", "--proxy", action="store", default="./dpsdc/experiments/turnings/proxy.sql")
+parser.add_argument("-c", "--cohort", action="store", default=f"{str(Path(__file__).parent)}/experiments/turnings/criteria.sql")
+parser.add_argument("-dp", "--proxy", action="store", default=f"{str(Path(__file__).parent)}/experiments/turnings/proxy.sql")
 args = parser.parse_args()
 
 APP_PATH = AppDataPaths("dpsdc")
