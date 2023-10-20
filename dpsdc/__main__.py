@@ -16,8 +16,8 @@ from hashlib import sha256
 parser = ArgumentParser()
 parser.add_argument("-d", "--dir", action="store", default="./output")
 parser.add_argument("-p", "--project-id", action="store", required=True)
-parser.add_argument("-c", "--cohort", action="store", required=True)
-parser.add_argument("-dp", "--proxy", action="store", required=True)
+parser.add_argument("-c", "--cohort", action="store", default="./dpsdc/experiments/turnings/criteria.sql")
+parser.add_argument("-dp", "--proxy", action="store", default="./dpsdc/experiments/turnings/proxy.sql")
 args = parser.parse_args()
 
 APP_PATH = AppDataPaths("dpsdc")
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     download()
 
     # Building Table One
-    df = load_table_one()
+    df = load_table_one(DATA_PATH)
     table_one = TableOne(df, categorical=categorical(df), groupby="proxy", pval=True)
 
     # Saving Results
