@@ -8,3 +8,5 @@ dpsdc/__pycache__/
 __pycache__/
 dpsdc/dashboard.py
 requirements.txt
+*.egg-info
+build/

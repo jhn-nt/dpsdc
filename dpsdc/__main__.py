@@ -11,7 +11,7 @@ from typing import List, Union
 from .loaders import load_table_one
 from tableone import TableOne
 from hashlib import sha256
-__file__
+
 
 parser = ArgumentParser()
 parser.add_argument("-d", "--dir", action="store", default="./output")
