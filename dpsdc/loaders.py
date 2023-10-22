@@ -106,7 +106,7 @@ def load_outcomes(DATA_PATH: Path) -> pd.DataFrame:
     return __raw_df__.to_frame().loc[__cohort__(DATA_PATH)]
 
 
-def load_proxy(DATA_PATH:Path) -> pd.DataFrame:
+def load_proxy(DATA_PATH:Path,timestamp_variance__hours:float=5/60) -> pd.DataFrame:
     """Returns the average time interval between instances of the proxy as well as the number of days the proxy was received.
 
     Args:
@@ -121,10 +121,11 @@ def load_proxy(DATA_PATH:Path) -> pd.DataFrame:
         .average_item_interval.agg(["mean", "count"])
         .rename(columns={"mean": "proxy", "count": "days"})
     )
+    __raw_df__["proxy"]=__raw_df__.proxy + np.random.normal(0,timestamp_variance__hours,__raw_df__.shape[0])
     return __raw_df__.loc[__cohort__(DATA_PATH)]
 
 
-def load_proxy_quantiles(DATA_PATH:Path,quantiles: List[str]) -> pd.DataFrame:
+def load_proxy_quantiles(DATA_PATH:Path,quantiles: List[str],timestamp_variance__hours:float=5/60) -> pd.DataFrame:
     """Returns the average time interval between instances of the proxy as well as the number of days the proxy was received.
     The proxy variables is categorized in different quantiles, as decided by the user, prior to be returned.
 
@@ -135,7 +136,7 @@ def load_proxy_quantiles(DATA_PATH:Path,quantiles: List[str]) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Data.
     """
-    proxy_and_days = load_proxy(DATA_PATH)
+    proxy_and_days = load_proxy(DATA_PATH,timestamp_variance__hours=timestamp_variance__hours)
     proxy_and_days.proxy = pd.qcut(proxy_and_days.proxy, q=quantiles).astype(str)
     return proxy_and_days.loc[__cohort__(DATA_PATH)]
 

@@ -3,14 +3,21 @@ from appdata import AppDataPaths
 import json
 import pandas as pd
 import numpy as np
+from itertools import product
+from dataclasses import dataclass, replace
 from argparse import ArgumentParser
 from tqdm import tqdm
 import os
 
-from typing import List, Union
-from .loaders import load_table_one
+from sklearn.model_selection import RepeatedKFold
+
+from numpy.typing import ArrayLike
+from typing import List, Union, Tuple
+from .loaders import load_table_one,load_disparity_axis,load_proxy
 from tableone import TableOne
 from hashlib import sha256
+
+
 
 
 parser = ArgumentParser()
@@ -32,6 +39,7 @@ PROCEDURES_PATH = Path(__file__).parent / "procedures"
 TARGET_FOLDER = sha256((str(COHORT_PATH) + str(PROXY_PATH)).encode()).hexdigest()
 DATA_PATH = Path(APP_PATH.app_data_path) / TARGET_FOLDER
 PROJECT_ID = args.project_id
+print(DATA_PATH)
 
 
 if not OUTPUT_PATH.is_dir():
@@ -69,6 +77,95 @@ def continuous(df):
     return df.columns[df.dtypes != "object"].to_list()
 
 
+def compute_ecdf_from_sample(x:ArrayLike,lower:float=.01,upper:float=.99,n_thresholds:int=100)->Tuple[ArrayLike,ArrayLike]:
+    """Computes the Empirical Cumulative Distribution Function, ECDF, from a sample x of a continuous random variable.
+
+    Args:
+        x (ArrayLike): Sample.
+        lower (float, optional): Lower estimation bound expressed as percentile of x. Defaults to .01.
+        upper (float, optional): Upper estimation bound expressed as percentile of x. Defaults to .99.
+        n_thresholds (int, optional): Number of thresholds where to estimate densities. Defaults to 100.
+
+    Returns:
+        Tuple[ArrayLike,ArrayLike]: Tuple with two outputs:
+            1. thresholds: Thresholds of x.
+            2. ecdf: Densities at thresholds.
+    """
+    sample_size=x.size
+    qmin,qmax=np.quantile(x,[lower,upper])
+    thresholds=np.linspace(qmin, qmax,n_thresholds)
+
+    @np.vectorize
+    def p_t_greater_than_x(threshold):
+        return np.sum(x<threshold)/sample_size
+
+    ecdf=p_t_greater_than_x(thresholds)
+    return thresholds,ecdf
+
+def compute_and_interpolate_ecdf_from_sample(*args,n_points:int=100,**kwargs)->Tuple[ArrayLike,ArrayLike]:
+    """Computes the Empirical Cumulative Distribution Function, ECDF, from a sample x of a continuous random variable.
+
+    Args:
+        x (ArrayLike): Sample.
+        lower (float, optional): Lower estimation bound expressed as percentile of x. Defaults to .01.
+        upper (float, optional): Upper estimation bound expressed as percentile of x. Defaults to .99.
+        n_thresholds (int, optional): Number of thresholds where to estimate densities. Defaults to 100.
+        n_points (int, optional): Number of interpolating points.
+
+    Returns:
+        Tuple[ArrayLike,ArrayLike]: Tuple with two outputs:
+            1. thresholds: Interpolated Thresholds of x.
+            2. ecdf: Interpolated Densities at thresholds.
+    """
+    thresholds,raw_ecdf=compute_ecdf_from_sample(*args,**kwargs)
+    eps=1/len(thresholds)
+    interpol_ecdf=np.linspace(eps,1-eps, n_points)
+    interpol_thresholds=np.interp(interpol_ecdf,raw_ecdf,thresholds)
+    return interpol_thresholds,interpol_ecdf
+
+def run_analysis_between_proxy_and_continuous_disparity_axis(axis:str,DATA_PATH:Path):
+    """_summary_
+    TODO: plotting function
+
+    Args:
+        axis (str): _description_
+        DATA_PATH (Path): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    cv=RepeatedKFold()
+    timestamp_variance=np.asarray([0,1,2,3,4,5,6,7,9,10])/60
+
+    @dataclass
+    class Accumulate:
+        t:List[ArrayLike]
+        ecdf: List[ArrayLike]
+
+        @classmethod
+        def empty(cls):
+            return cls(t=[],ecdf=[])
+
+        @classmethod
+        def from_output(cls, t,ecdf):
+            return cls(t=[t],ecdf=[ecdf])
+    
+        def __add__(self,other):
+            return replace(self,t=self.t+other.t,ecdf=self.ecdf+other.ecdf)
+    
+
+    disparities_df=load_disparity_axis(DATA_PATH)
+    axis_m=Accumulate.empty() # weight metrics
+    proxy_m=Accumulate.empty() # proxy metrics
+    bias_and_slope=[]
+    for tv,(_,test) in tqdm(product(timestamp_variance,cv.split(disparities_df))):
+        proxy_df=load_proxy(DATA_PATH,timestamp_variance__hours=tv)
+        axis_m+=Accumulate.from_output(*compute_and_interpolate_ecdf_from_sample(disparities_df.iloc[test][axis]))
+        proxy_m+=Accumulate.from_output(*compute_and_interpolate_ecdf_from_sample(proxy_df.iloc[test].proxy))
+
+        bias_and_slope.append(np.polyfit(axis_m.t[-1],proxy_m.t[-1],1))
+
+    return axis_m,proxy_m,np.stack(bias_and_slope)
 if __name__ == "__main__":
     download()
 

@@ -7,4 +7,6 @@ FROM `physionet-data.mimiciv_derived.ventilation` ventilation
 LEFT JOIN `physionet-data.mimiciv_derived.first_day_weight` weight ON weight.stay_id=ventilation.stay_id
 WHERE ventilation.ventilation_status='InvasiveVent'
     AND weight.weight IS NOT NULL
+    AND weight.weight>10
+    AND weight.weight<250
     
