@@ -12,7 +12,7 @@ import os
 from sklearn.model_selection import RepeatedKFold
 
 from numpy.typing import ArrayLike
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Iterable
 from .loaders import load_table_one,load_disparity_axis,load_proxy
 from tableone import TableOne
 from hashlib import sha256
@@ -123,19 +123,14 @@ def compute_and_interpolate_ecdf_from_sample(*args,n_points:int=100,**kwargs)->T
     interpol_thresholds=np.interp(interpol_ecdf,raw_ecdf,thresholds)
     return interpol_thresholds,interpol_ecdf
 
-def run_analysis_between_proxy_and_continuous_disparity_axis(axis:str,DATA_PATH:Path):
-    """_summary_
-    TODO: plotting function
+def run_analysis_between_proxy_and_continuous_disparity_axis(axis:str,DATA_PATH:Path,timestamp_variances__min:Iterable=[0,1,2,3,4,5,6,7,9,10]):
 
-    Args:
-        axis (str): _description_
-        DATA_PATH (Path): _description_
-
-    Returns:
-        _type_: _description_
-    """
+    disparity_axis=load_disparity_axis(DATA_PATH)[axis].values
+    proxy=load_proxy(DATA_PATH,timestamp_variance__hours=0).proxy.values
+    timestamp_variance=np.asarray(timestamp_variances__min)/60
     cv=RepeatedKFold()
-    timestamp_variance=np.asarray([0,1,2,3,4,5,6,7,9,10])/60
+
+    n_cycles=cv.get_n_splits()*len(timestamp_variance)
 
     @dataclass
     class Accumulate:
@@ -152,20 +147,29 @@ def run_analysis_between_proxy_and_continuous_disparity_axis(axis:str,DATA_PATH:
     
         def __add__(self,other):
             return replace(self,t=self.t+other.t,ecdf=self.ecdf+other.ecdf)
-    
+        
+        def compute(self):
+            return np.stack(self.t),np.stack(self.ecdf)
 
-    disparities_df=load_disparity_axis(DATA_PATH)
-    axis_m=Accumulate.empty() # weight metrics
-    proxy_m=Accumulate.empty() # proxy metrics
+
+    axis_m=Accumulate.empty()
+    proxy_m=Accumulate.empty() 
     bias_and_slope=[]
-    for tv,(_,test) in tqdm(product(timestamp_variance,cv.split(disparities_df))):
-        proxy_df=load_proxy(DATA_PATH,timestamp_variance__hours=tv)
-        axis_m+=Accumulate.from_output(*compute_and_interpolate_ecdf_from_sample(disparities_df.iloc[test][axis]))
-        proxy_m+=Accumulate.from_output(*compute_and_interpolate_ecdf_from_sample(proxy_df.iloc[test].proxy))
+
+    for tv,(_,test) in tqdm(product(timestamp_variance,cv.split(disparity_axis,proxy)),total=n_cycles):
+        adjusted_proxy=proxy + np.random.normal(0,tv)
+        axis_m+=Accumulate.from_output(*compute_and_interpolate_ecdf_from_sample(disparity_axis[test]))
+        proxy_m+=Accumulate.from_output(*compute_and_interpolate_ecdf_from_sample(adjusted_proxy[test]))
 
         bias_and_slope.append(np.polyfit(axis_m.t[-1],proxy_m.t[-1],1))
 
-    return axis_m,proxy_m,np.stack(bias_and_slope)
+    return {
+        axis:axis_m.compute(),
+        "proxy":proxy_m.compute(),
+        "bias_and_slope":np.stack(bias_and_slope)}
+
+
+
 if __name__ == "__main__":
     download()
 
