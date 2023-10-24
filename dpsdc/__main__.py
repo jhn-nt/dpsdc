@@ -177,5 +177,8 @@ if __name__ == "__main__":
     df = load_table_one(DATA_PATH)
     table_one = TableOne(df, categorical=categorical(df), groupby="proxy", pval=True)
 
+    # Computing ECDFs and QQ-PLots
+
+
     # Saving Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
