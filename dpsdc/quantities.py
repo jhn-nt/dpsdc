@@ -8,6 +8,10 @@ from numpy.typing import ArrayLike
 import pandas as pd
 
 from sklearn.model_selection import RepeatedKFold
+from scipy.stats import ttest_ind
+
+import matplotlib.pyplot as plt
+from matplotlib import cm
 
 
 
@@ -134,6 +138,12 @@ class UnivariateAnalysis:
     
         return trace, baseline
     
+    def test_null_hypothesis_that_observed_quantile_mapping_adheres_to_protocol(self,trace,baseline):
+        trace_slopes=np.asarray([*map(lambda x: x.slope,trace)])
+        baseline_slopes=np.asarray([*map(lambda x: x.slope,baseline)])
+        pvalue=ttest_ind(trace_slopes,baseline_slopes).pvalue
+        return trace_slopes,baseline_slopes,pvalue
+
     def plot(self,trace,baseline):
         fig,ax=plt.subplots()
         _=QuantilePair.plot_with_confidence_intervals(ax,baseline,"k","Protocol")
