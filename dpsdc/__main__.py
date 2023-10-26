@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 
 from tableone import TableOne
 from hashlib import sha256
-f
+
 from .loaders import load_table_one, load_proxy, load_disparity_axis
 from .quantities import UnivariateAnalysis
 
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     df = load_table_one(DATA_PATH)
     table_one = TableOne(df, categorical=categorical(df), groupby="proxy", pval=True)
 
-    # Computing ECDFs and QQ-PLots
+    # Computing Quantile Maps
     proxy_df=load_proxy(DATA_PATH)
     disparities_df=load_disparity_axis(DATA_PATH)
     experiment=UnivariateAnalysis(
