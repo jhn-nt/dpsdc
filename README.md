@@ -1,14 +1,6 @@
 # Disparity Proxies and Social Determinants of Care Workshop
 ## 
 
-Invasive Mechnical Ventilation (IMV) is a complex treatment administered to ICU patients' with insufficient respiratory function.  
-After intubation, IMV patients are closely monitored to ensure adequate oxygenation and ventilation. Several tools are available to assess the efficacy of IMV, and guidelines offer clear indications on their usage.   
-Nevertheless, a wealth of evidence from reasearch [2][3][4] highlights how disadvantaged groups may experience unfair disparities in the quality of medical care they receive.  
-It is our responsability as investigators to analyze data and formulate robust hypotheses to identify these disparities transparently, collaboratively and reproducibly.  
-The following workshop is based on the MIMIC-IV database [1].
-
-
-In this repo you will find all the code necessary to generate the tables and analysis used during the workshop.
 
 
 
@@ -21,50 +13,10 @@ __Important Note__: The google account enabled to access the MIMIC-IV must the b
 ### Installation
 1. run `pip install "git+https://github.com/jhn-nt/dpsdc.git"`
 
-### User Guide
-Generating the report in folder `<working-directory>/output/`:
-```python
-python3 -m dpsdc <your project-id> -c <path/to/cohort/query>  -p <path/to/proxy/query>
-```
 
-Generating the report into a user defined folder:
- ```python
-python3 -m  dpsdc -d <path/to/folder> <your project-id>
-```
 
-You will be prompted to authorize pandas GBQ to access your Google Account for the scope of the query.
 
-Data will be downloaded only the first time that the package is run then stored in a temporary file for future reuses.   
-To remove all temporary data run:
- ```python
-python3 -m  dpsdc.reset
-```
 
-You can also navigate the data on your own; here is a selected set of commands that can be used in jupyter or colab notebooks:
- ```python
-from dpsdc.etl import begin_workshop
-from dpsdc.etl import load_profiles, load_view
-
-# Initialization, required to download and process the data
-begin_workshop(PROJECT_ID)
-
-# Requesting all the features available in the workshop in the PORFILES dictionary.
-PROFILES=load_profiles() 
-
-# PROFILES maps features based on their nature: categorical, continuous or ordinal.
-CATEGORICAL_FEATURES=PROFILES["categorical"]
-CONTINUOUS_FEATURES=PROFILES["continuous"]
-ORDINAL_FEATURES=PROFILES["ordinal"]
-
-# Loading a data view based on user defined features into a pandas dataframe.
-dataset=load_view(["admission_age","SOFA","hospital_death"],PROJECT_ID) 
-```
-
-### Citation
-For those who desire to use the codebase from this repo in future projects, you can cite this workshop via the following:
-```bibtex
-Angelotti, G. (2023). Disparity Proxies and Social Determinants of Care Workshop. (Version 0.1) [Computer software]. https://github.com/jhn-nt/dpsdc
-```
 
 ### Acknowledgements
 

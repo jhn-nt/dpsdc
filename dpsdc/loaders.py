@@ -8,13 +8,14 @@ from pathlib import Path
 
 warnings.filterwarnings("ignore")
 
+
 def __cohort__(DATA_PATH):
-    from_cohort=pd.read_pickle(DATA_PATH / "cohort.pkl").stay_id.unique()
-    from_proxy=pd.read_pickle(DATA_PATH / "proxy.pkl").stay_id.unique()
+    from_cohort = pd.read_pickle(DATA_PATH / "cohort.pkl").stay_id.unique()
+    from_proxy = pd.read_pickle(DATA_PATH / "proxy.pkl").stay_id.unique()
     return list(set(from_cohort).intersection(from_proxy))
 
 
-def load_disparity_axis(DATA_PATH:Path) -> pd.DataFrame:
+def load_disparity_axis(DATA_PATH: Path) -> pd.DataFrame:
     """Returns the disparity axis, defined as race, insurance, gender, weight, language a nd BMI,
     for all patients requested by the user.
 
@@ -44,7 +45,7 @@ def load_disparity_axis(DATA_PATH:Path) -> pd.DataFrame:
     return __raw_df__.set_index("stay_id")[features].loc[__cohort__(DATA_PATH)]
 
 
-def load_baselines(DATA_PATH:Path) -> pd.DataFrame:
+def load_baselines(DATA_PATH: Path) -> pd.DataFrame:
     """Returns baseline ICU admission charachteristics of each patient.
     Examples are admission_age, SODA score or Charlson Comorbidity Index.
 
@@ -54,6 +55,7 @@ def load_baselines(DATA_PATH:Path) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Data.
     """
+
     def demographic():
         __raw_df__ = pd.read_pickle(DATA_PATH / "cohort.pkl")
         __raw_df__["careunit"] = parse_careunit(__raw_df__["first_careunit"])
@@ -106,7 +108,7 @@ def load_outcomes(DATA_PATH: Path) -> pd.DataFrame:
     return __raw_df__.to_frame().loc[__cohort__(DATA_PATH)]
 
 
-def load_proxy(DATA_PATH:Path,timestamp_variance__hours:float=5/60) -> pd.DataFrame:
+def load_proxy(DATA_PATH: Path) -> pd.DataFrame:
     """Returns the average time interval between instances of the proxy as well as the number of days the proxy was received.
 
     Args:
@@ -116,16 +118,17 @@ def load_proxy(DATA_PATH:Path,timestamp_variance__hours:float=5/60) -> pd.DataFr
         pd.DataFrame: Data.
     """
     __raw_df__ = pd.read_pickle(DATA_PATH / "proxy.pkl")
-    __raw_df__ = (
+    proxy_and_days_df = (
         __raw_df__.groupby("stay_id")
         .average_item_interval.agg(["mean", "count"])
         .rename(columns={"mean": "proxy", "count": "days"})
     )
-    __raw_df__["proxy"]=__raw_df__.proxy + np.random.normal(0,timestamp_variance__hours,__raw_df__.shape[0])
-    return __raw_df__.loc[__cohort__(DATA_PATH)]
+    caregivers_df = __raw_df__.groupby("stay_id").n_caregivers.mean()
+    df = pd.concat([proxy_and_days_df, caregivers_df], axis=1)
+    return df.loc[__cohort__(DATA_PATH)]
 
 
-def load_proxy_quantiles(DATA_PATH:Path,quantiles: List[str],timestamp_variance__hours:float=5/60) -> pd.DataFrame:
+def load_proxy_quantiles(DATA_PATH: Path, quantiles: List[str]) -> pd.DataFrame:
     """Returns the average time interval between instances of the proxy as well as the number of days the proxy was received.
     The proxy variables is categorized in different quantiles, as decided by the user, prior to be returned.
 
@@ -136,12 +139,12 @@ def load_proxy_quantiles(DATA_PATH:Path,quantiles: List[str],timestamp_variance_
     Returns:
         pd.DataFrame: Data.
     """
-    proxy_and_days = load_proxy(DATA_PATH,timestamp_variance__hours=timestamp_variance__hours)
+    proxy_and_days = load_proxy(DATA_PATH)
     proxy_and_days.proxy = pd.qcut(proxy_and_days.proxy, q=quantiles).astype(str)
     return proxy_and_days.loc[__cohort__(DATA_PATH)]
 
 
-def load_proxy_time_series(DATA_PATH:Path) -> pd.DataFrame:
+def load_proxy_time_series(DATA_PATH: Path) -> pd.DataFrame:
     """Returns raw daily time series of the proxies-
 
     Args:
@@ -150,11 +153,15 @@ def load_proxy_time_series(DATA_PATH:Path) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Data.
     """
-    return pd.read_pickle(DATA_PATH / "proxy.pkl").set_index("stay_id").loc[__cohort__(DATA_PATH)]
+    return (
+        pd.read_pickle(DATA_PATH / "proxy.pkl")
+        .set_index("stay_id")
+        .loc[__cohort__(DATA_PATH)]
+    )
 
 
-def load_table_one(DATA_PATH:Path) -> pd.DataFrame:
-    """Returns all the variables to be dispalyed in the table one. 
+def load_table_one(DATA_PATH: Path) -> pd.DataFrame:
+    """Returns all the variables to be dispalyed in the table one.
 
     Args:
         DATA_PATH (Path): Path to the Data.
@@ -165,7 +172,7 @@ def load_table_one(DATA_PATH:Path) -> pd.DataFrame:
     disparity_axis_df = load_disparity_axis(DATA_PATH)
     baselines_df = load_baselines(DATA_PATH)
     outcomes_df = load_outcomes(DATA_PATH)
-    proxy_df = load_proxy_quantiles(DATA_PATH,[0, 0.25, 0.5, 0.75, 1])
+    proxy_df = load_proxy_quantiles(DATA_PATH, [0, 0.25, 0.5, 0.75, 1])
 
     return pd.concat(
         [disparity_axis_df, baselines_df, proxy_df, outcomes_df], axis=1, join="inner"

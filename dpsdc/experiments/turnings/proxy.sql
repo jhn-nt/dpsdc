@@ -13,10 +13,12 @@ SELECT
   stay_id,
   day,
   24/COUNT(day) AS average_item_interval, 
-  COUNT(day) AS item_volume
+  COUNT(day) AS item_volume,
+  COUNT(DISTINCT caregiver_id) AS n_caregivers
 FROM (
   SELECT 
     chartevents.stay_id,
+    chartevents.caregiver_id,
     EXTRACT(DATE FROM intubation.intubation_time) AS intubation_date,
     EXTRACT(DATE FROM intubation.extubation_time) AS extubation_date,
     EXTRACT(DATE FROM chartevents.charttime) AS item_date,
@@ -27,3 +29,4 @@ FROM (
     AND EXTRACT(DATE FROM intubation.intubation_time)!=EXTRACT(DATE FROM chartevents.charttime)
     AND EXTRACT(DATE FROM intubation.extubation_time)!=EXTRACT(DATE FROM chartevents.charttime))
 GROUP BY stay_id, day
+

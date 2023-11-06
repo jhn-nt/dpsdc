@@ -3,7 +3,7 @@ from appdata import AppDataPaths
 import json
 import os
 from tqdm import tqdm
- 
+
 
 import pandas as pd
 import numpy as np
@@ -15,33 +15,53 @@ from argparse import ArgumentParser
 from tableone import TableOne
 from hashlib import sha256
 
-from .loaders import load_table_one, load_proxy, load_disparity_axis
-from .quantities import UnivariateAnalysis
-
-
-
+from .loaders import load_table_one, load_proxy, load_disparity_axis, load_baselines
+from .quantities import UnivariateAnalysis, MultivariateAnalysis
+from .utils import categorical, continuous
 
 
 parser = ArgumentParser()
 parser.add_argument("-d", "--dir", action="store", default="./output")
 parser.add_argument("-p", "--project-id", action="store", required=True)
-parser.add_argument("-c", "--cohort", action="store", default=f"{str(Path(__file__).parent)}/experiments/turnings/criteria.sql")
-parser.add_argument("-dp", "--proxy", action="store", default=f"{str(Path(__file__).parent)}/experiments/turnings/proxy.sql")
+parser.add_argument(
+    "-c",
+    "--cohort",
+    action="store",
+    default=f"{str(Path(__file__).parent)}/experiments/turnings/criteria.sql",
+)
+parser.add_argument(
+    "-dp",
+    "--proxy",
+    action="store",
+    default=f"{str(Path(__file__).parent)}/experiments/turnings/proxy.sql",
+)
+parser.add_argument("--dry", action="store_true", default="store_false")
 args = parser.parse_args()
 
-APP_PATH = AppDataPaths("dpsdc") # Initializing temp folders
+APP_PATH = AppDataPaths("dpsdc")  # Initializing temp folders
 APP_PATH.setup()
 
 
-OUTPUT_PATH = Path(args.dir) # Output directory for figures and tables
-COHORT_PATH = Path(args.cohort) # Path to .sql defining the cohort
-PROXY_PATH = Path(args.proxy) # Path to .sql defining the proxy 
-PROCEDURES_PATH = Path(__file__).parent / "procedures" # Path to dpsdc internal procedures
+OUTPUT_PATH = Path(args.dir)  # Output directory for figures and tables
+COHORT_PATH = Path(args.cohort)  # Path to the .sql file defining the cohort
+PROXY_PATH = Path(args.proxy)  # Path to the .sql file defining the proxy
+PROCEDURES_PATH = (
+    Path(__file__).parent / "procedures"
+)  # Path to dpsdc template procedures
 
-TARGET_FOLDER = sha256((str(COHORT_PATH) + str(PROXY_PATH)).encode()).hexdigest() # Unique Name defined from the cohort and proxy
-DATA_PATH = Path(APP_PATH.app_data_path) / TARGET_FOLDER # Data and temporary files will be stored here
-PROJECT_ID = args.project_id # User defined google project id used to access BigQuery
-print(DATA_PATH)
+TARGET_FOLDER = sha256(
+    (str(COHORT_PATH) + str(PROXY_PATH)).encode()
+).hexdigest()  # Unique Temp folder name defined from the cohort and proxy file names
+DATA_PATH = (
+    Path(APP_PATH.app_data_path) / TARGET_FOLDER
+)  # Data and temporary files will be stored here
+PROJECT_ID = args.project_id  # User defined google project id used to access BigQuery
+DRY_RUN = args.dry
+
+
+if DRY_RUN:
+    print("DRY RUN")
+    print(DATA_PATH)
 
 
 if not OUTPUT_PATH.is_dir():
@@ -71,34 +91,77 @@ def download():
             )
 
 
-def categorical(df):
-    return df.columns[df.dtypes == "object"].to_list()
-
-
-def continuous(df):
-    return df.columns[df.dtypes != "object"].to_list()
-
-
-
 if __name__ == "__main__":
-    # Downloading the data from BigQuery, if not already available
+    # 1. Downloading the data from BigQuery, if not already available
     download()
 
-    # Building Table One
+    # 2. Building Table One
     df = load_table_one(DATA_PATH)
     table_one = TableOne(df, categorical=categorical(df), groupby="proxy", pval=True)
 
-    # Computing Quantile Maps
-    proxy_df=load_proxy(DATA_PATH)
-    disparities_df=load_disparity_axis(DATA_PATH)
-    experiment=UnivariateAnalysis(
+    # 3. Computing Quantile Maps with a high resolution (100pts) for plots and stats
+    proxy_df = load_proxy(DATA_PATH)
+    disparities_df = load_disparity_axis(DATA_PATH)
+    experiment = UnivariateAnalysis(
         proxy_name="Turning",
         disparities_axis_name="Weight",
         disparities_axis_uom="Kg(s)",
-        protocol__hours=2)
-    results=experiment.estimate_quantile_mappings_between_proxy_and_disparity_axis(proxy_df.proxy,disparities_df["weight"])
-    quantile_plot=experiment.plot(*results)
+        protocol__hours=2,
+        n_points=100,
+    )
+    results = experiment.estimate_quantile_mappings_between_proxy_and_disparity_axis(
+        proxy_df.proxy, disparities_df["weight"]
+    )
+    slopes = experiment.test_null_hypothesis_that_observed_quantile_mapping_adheres_to_protocol(
+        *results
+    )
+    quantile_plot, slopes_plot, proxy_ecdf_plot, disparity_ecdf_plot = experiment.plot(
+        results, slopes
+    )
+
+    # 4. Computing Quantile Maps at low resolution (10pts) for descriptive tables
+    experiment = UnivariateAnalysis(
+        proxy_name="Turning",
+        disparities_axis_name="Weight",
+        disparities_axis_uom="Kg(s)",
+        protocol__hours=2,
+        n_points=10,
+    )
+    results = experiment.estimate_quantile_mappings_between_proxy_and_disparity_axis(
+        proxy_df.proxy, disparities_df["weight"]
+    )
+    univariate_results_df = experiment.to_df(*results)
+
+    # 5. Quantile regression to adjust for confounders
+    baseline_df = load_baselines(DATA_PATH)
+    disparity_axis_df = load_disparity_axis(DATA_PATH)
+    proxies_df = load_proxy(DATA_PATH)
+    X_y = pd.concat([baseline_df, disparity_axis_df, proxies_df], axis=1)
+
+    experiment = MultivariateAnalysis(
+        proxy_name="Turning",
+        disparities_axis_name="Weight",
+        disparities_axis_uom="Kg(s)",
+        dry=DRY_RUN,
+    )
+    results = experiment.run(X_y)
+    observed_predicted_quantiles_plot = experiment.plot_observed_predicted_quantiles(
+        results
+    )
+    test_scores, train_scores, fi_per_model = experiment.to_df(results)
 
     # Saving Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
-    quantile_plot.savefig(OUTPUT_PATH / "quantile_plot.png",dpi=500)
+    univariate_results_df.to_excel(OUTPUT_PATH / "univariate_results.xlsx")
+    quantile_plot.savefig(OUTPUT_PATH / "quantile_plot.png", dpi=500)
+    slopes_plot.savefig(OUTPUT_PATH / "slopes_plot.png", dpi=500)
+    proxy_ecdf_plot.savefig(OUTPUT_PATH / "proxy_ecdf_plot.png", dpi=500)
+    disparity_ecdf_plot.savefig(OUTPUT_PATH / "disparity_ecdf_plot.png", dpi=500)
+    test_scores.to_excel(OUTPUT_PATH / "test_scores.xlsx")
+    train_scores.to_excel(OUTPUT_PATH / "train_scores.xlsx")
+    observed_predicted_quantiles_plot.savefig(
+        OUTPUT_PATH / "observed_predicted_quantiles_plot.png", dpi=500
+    )
+
+    for model_name, fi in fi_per_model.items():
+        fi.to_excel(OUTPUT_PATH / f"{model_name}.xlsx")
