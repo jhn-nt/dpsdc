@@ -18,6 +18,6 @@ setup(
         "scipy==1.11.3",
         "tableone==0.8.0",
         "appdata==2.2.0",
-        "tqdm",
+        "tqdm==4.66.1",
     ],
 )

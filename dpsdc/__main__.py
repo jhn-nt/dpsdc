@@ -35,7 +35,7 @@ parser.add_argument(
     action="store",
     default=f"{str(Path(__file__).parent)}/experiments/turnings/proxy.sql",
 )
-parser.add_argument("--dry", action="store_true", default="store_false")
+parser.add_argument("--dry", action="store_true")
 args = parser.parse_args()
 
 APP_PATH = AppDataPaths("dpsdc")  # Initializing temp folders
@@ -148,6 +148,8 @@ if __name__ == "__main__":
     observed_predicted_quantiles_plot = experiment.plot_observed_predicted_quantiles(
         results
     )
+    fi_plots_per_model = experiment.plot_fi_boxplots(results)
+    shap_plots_per_model = experiment.plot_shapvalues(results)
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
 
     # Saving Results
@@ -165,3 +167,9 @@ if __name__ == "__main__":
 
     for model_name, fi in fi_per_model.items():
         fi.to_excel(OUTPUT_PATH / f"{model_name}.xlsx")
+
+    for model_name, fig in fi_plots_per_model.items():
+        fig.savefig(OUTPUT_PATH / f"{model_name}_fi_plot.png", dpi=500)
+
+    for model_name, fig in shap_plots_per_model.items():
+        fig.savefig(OUTPUT_PATH / f"{model_name}_shap_plot.png", dpi=500)

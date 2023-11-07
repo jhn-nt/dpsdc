@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass, field, fields
 from itertools import product
 
+from shap import LinearExplainer, TreeExplainer, plots
+
 import numpy as np
 from numpy.typing import ArrayLike
 from typing import Any, Callable, Dict, List
@@ -62,7 +64,7 @@ class Base(np.lib.mixins.NDArrayOperatorsMixin):
 
 @dataclass(frozen=True, slots=True)
 class ECDF(Base):
-    """Dataclass implementing Empirical Cumulative Distribution Function, ECDF,
+    """Dataclass implementing Empirical Cumulative Distribution Function, ECDF, estimation
     from a sample of a continuous random variable.
     """
 
@@ -305,7 +307,7 @@ class UnivariateAnalysis:
 @dataclass(frozen=True)
 class Regressor:
     """Base class implementing the minimum functionality of a regressor.
-    It implements the preprocessor for the data, plut some method that requires ad-hoc implementation.
+    This class is specifically tailored ot work with dpsdc data.
     """
 
     name: str = field(repr=True)
@@ -337,8 +339,21 @@ class Regressor:
         raise NotImplementedError("Subclass this method")
 
     @staticmethod
-    def get_shap_values(model, X, y):
+    def shap_explainer(model, X):
         raise NotImplementedError("Subclass this method")
+
+    def get_shap_values(self, X, y, **kwargs):
+        model = self.estimator.fit(X, y, **kwargs)
+
+        def feature_names():
+            features = model[0].get_feature_names_out()
+            return [feat.split("__", 1)[1] for feat in features]
+
+        observations = model[0].transform(X)
+        shap_values = self.shap_explainer(model[1], observations)
+        if shap_values is not None:
+            shap_values.feature_names = feature_names()
+        return shap_values
 
     @classmethod
     def build(cls, X, y, random_state=0, **kwargs):
@@ -360,10 +375,12 @@ class Regressor:
             name=self.name,
             progress_bar=False,
         )
-        return results
+        return (*results, self.get_shap_values(X, y))
 
 
 class RidgeReg(Regressor):
+    """Implementation of a Ridge Regressor."""
+
     name = "Ridge"
 
     @staticmethod
@@ -380,8 +397,14 @@ class RidgeReg(Regressor):
         fi = model[-1].best_estimator_.coef_
         return pd.Series(fi, index=features, name="Ridge")
 
+    @staticmethod
+    def shap_explainer(model, X):
+        return LinearExplainer(model.best_estimator_, X)(X)
+
 
 class QuantileRidgeReg(Regressor):
+    """Implementation of a Quantile Ridge Regressor."""
+
     name = "Quantile Ridge"
 
     @staticmethod
@@ -403,8 +426,15 @@ class QuantileRidgeReg(Regressor):
         fi = model[-1].best_estimator_.regressor_.coef_
         return pd.Series(fi, index=features, name="Quantile Ridge")
 
+    @staticmethod
+    def shap_explainer(model, X):
+        regressor_ = model.best_estimator_.regressor_
+        return LinearExplainer(regressor_, X)(X)
+
 
 class LGBMReg(Regressor):
+    """Implementation of Gradient Boosting."""
+
     name = "LGBM"
 
     @staticmethod
@@ -421,8 +451,14 @@ class LGBMReg(Regressor):
         fi = model[-1].best_estimator_.feature_importances_
         return pd.Series(fi, index=features, name="LGBM")
 
+    @staticmethod
+    def shap_explainer(model, X):
+        return TreeExplainer(model.best_estimator_, X)(X)
+
 
 class QuantileLGBMReg(Regressor):
+    """Implementation of Quantile-loss Gradient Boosting."""
+
     name = "Quantile LGBM"
 
     @staticmethod
@@ -441,8 +477,14 @@ class QuantileLGBMReg(Regressor):
         fi = model[-1].best_estimator_.feature_importances_
         return pd.Series(fi, index=features, name="Quantile LGBM")
 
+    @staticmethod
+    def shap_explainer(model, X):
+        return TreeExplainer(model.best_estimator_, X)(X)
+
 
 class MedianReg(Regressor):
+    """Implementation of a Median Baseline."""
+
     name = "Median"
 
     @staticmethod
@@ -451,6 +493,10 @@ class MedianReg(Regressor):
 
     @staticmethod
     def tracing_func(model):
+        pass
+
+    @staticmethod
+    def shap_explainer(model, X):
         pass
 
 
@@ -517,6 +563,43 @@ class MultivariateAnalysis:
         _ = ax.set_xlabel("True Quantile Value")
         return fig
 
+    @staticmethod
+    def plot_fi_boxplots(results):
+        def plot_fi(fi):
+            fi = fi.T
+            fig, ax = plt.subplots(figsize=(10, 10))
+            _ = fi[fi.mean().sort_values().index].boxplot(
+                showfliers=False, vert=False, ax=ax
+            )
+            _ = ax.set_xlabel("[AU]")
+            fig.tight_layout()
+            return fig
+
+        traces = results[2]
+        figures = {}
+        for key, item in traces.items():
+            figures[key] = plot_fi(item)
+
+        return figures
+
+    @staticmethod
+    def plot_shapvalues(results, timestamp_variance=5):
+        def plot_shap(shapval):
+            fig, ax = plt.subplots()
+            plots.beeswarm(shapval[timestamp_variance], max_display=35)
+            fig.tight_layout()
+            return fig
+
+        shapvals = results[3]
+        figures = {}
+        for key, item in shapvals.items():
+            try:
+                figures[key] = plot_shap(item)
+            except:
+                pass
+
+        return figures
+
     def get_models(self):
         if self.dry:
             model_list = [
@@ -528,8 +611,8 @@ class MultivariateAnalysis:
             model_list = [
                 LGBMReg,
                 RidgeReg,
-                QuantileRidgeReg,
-                QuantileLGBMReg,
+                # QuantileRidgeReg,
+                # QuantileLGBMReg,
                 MedianReg,
             ]
         return model_list
@@ -578,9 +661,9 @@ class MultivariateAnalysis:
         get_curves = lambda curve: pd.concat(
             map(lambda x: x[0]["curves"]["quantiles"], curve), axis=0
         )
+        get_shapvals = lambda shap: list(map(lambda x: x[-1], shap))
 
         X_y = self.remove_outliers_from_proxy(X_y)
-        models = []
 
         timestamp_variances_iterable = np.linspace(
             self.min_timestamp_variance__minutes,
@@ -615,10 +698,12 @@ class MultivariateAnalysis:
         traces = []
         scores = []
         curves = []
+        shapvals = []
 
         for key, items in results.items():
             curves.append(get_curves(items))
             scores.append(get_scores(items))
+            shapvals.append((key, get_shapvals(items)))
 
             try:
                 traces.append((key, get_traces(items)))
@@ -628,4 +713,4 @@ class MultivariateAnalysis:
         curves = pd.concat(curves, axis=0)
         scores = pd.concat(scores, axis=0)
 
-        return scores, curves, dict(traces)
+        return scores, curves, dict(traces), dict(shapvals)
