@@ -10,6 +10,8 @@ import numpy as np
 from numpy.typing import ArrayLike
 from typing import Any, Callable, Dict, List
 
+from scipy.stats import ttest_1samp
+
 import pandas as pd
 
 
@@ -415,7 +417,8 @@ class QuantileRidgeReg(Regressor):
 
         regressor_ = Ridge(random_state=random_state)
         estimator = TransformedTargetRegressor(
-            regressor=regressor_, transformer=QuantileTransformer()
+            regressor=regressor_,
+            transformer=QuantileTransformer(output_distribution="normal"),
         )
         return GridSearchCV(estimator, param_grid, cv=cv)
 
@@ -465,21 +468,25 @@ class QuantileLGBMReg(Regressor):
     def make_regressor(X, y, random_state=0, cv=KFold(), **kwargs):
         path = Path(__file__).parent / "params" / "lgbm.json"
         param_grid = json.load(open(path, "r"))
-        estimator = LGBMRegressor(
-            random_state=random_state, verbose=-1, objective="quantile"
+        param_grid = {f"regressor__{key}": item for key, item in param_grid.items()}
+
+        regressor = LGBMRegressor(random_state=random_state, verbose=-1)
+        estimator = TransformedTargetRegressor(
+            regressor=regressor, transformer=QuantileTransformer()
         )
+
         return GridSearchCV(estimator, param_grid, cv=cv)
 
     @staticmethod
     def tracing_func(model):
         features = model[0].get_feature_names_out()
         features = [feat.split("__", 1)[1] for feat in features]
-        fi = model[-1].best_estimator_.feature_importances_
+        fi = model[-1].best_estimator_.regressor_.feature_importances_
         return pd.Series(fi, index=features, name="Quantile LGBM")
 
     @staticmethod
     def shap_explainer(model, X):
-        return TreeExplainer(model.best_estimator_, X)(X)
+        return TreeExplainer(model.best_estimator_.regressor_, X)(X)
 
 
 class MedianReg(Regressor):
@@ -604,15 +611,13 @@ class MultivariateAnalysis:
         if self.dry:
             model_list = [
                 RidgeReg,
-                QuantileRidgeReg,
-                MedianReg,
             ]
         else:
             model_list = [
                 LGBMReg,
                 RidgeReg,
-                # QuantileRidgeReg,
-                # QuantileLGBMReg,
+                QuantileRidgeReg,
+                QuantileLGBMReg,
                 MedianReg,
             ]
         return model_list
@@ -634,12 +639,15 @@ class MultivariateAnalysis:
             return mean_table + std_table
 
         def format_traces(model_trace, name):
+            pval = lambda x: ttest_1samp(x, 0).pvalue
             table = model_trace.agg(["mean", "std"], axis=1).sort_values(
                 by="mean", ascending=False
             )
+            pvals = model_trace.apply(pval, axis=1).rename("p")
             mean_table = table["mean"].apply(lambda x: f"{x:.3f}")
             std_table = table["std"].apply(lambda x: f"  ({x:.3f})")
-            return (mean_table + std_table).rename(name)
+            mean_and_std = (mean_table + std_table).rename(name)
+            return pd.concat([mean_and_std, pvals], axis=1)
 
         fi_tables = {}
         for key, items in results[2].items():

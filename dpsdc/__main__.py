@@ -152,7 +152,7 @@ if __name__ == "__main__":
     shap_plots_per_model = experiment.plot_shapvalues(results)
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
 
-    # Saving Results
+    # 6. Saving Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
     univariate_results_df.to_excel(OUTPUT_PATH / "univariate_results.xlsx")
     quantile_plot.savefig(OUTPUT_PATH / "quantile_plot.png", dpi=500)
