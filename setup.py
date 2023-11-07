@@ -5,7 +5,7 @@ setup(
     name="dpsdc",
     version="0.2.1",
     description="Disparity Proxies and Social Determinants of Care",
-    author="Adrien Carrel, Giovanni Angelotti, Luca Leon Weishaupt, Lelia Marie Hampton, Nicole Dundas, Pierandrea Morandini",
+    author="A. Carrel, G. Angelotti, L.L. Weishaupt, L.M. Hampton, N. Dundas, P. Morandini, J. Byers, J. Gallifant, L.A. Celi",
     packages=["dpsdc"],
     include_package_data=True,
     python_requires="==3.10.13",
