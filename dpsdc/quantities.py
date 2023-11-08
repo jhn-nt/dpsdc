@@ -165,7 +165,7 @@ class UnivariateAnalysis:
     protocol__hours: float = field(repr=True)
     n_points: int = field(repr=True)
     n_variances: int = field(default=10, repr=True)
-    max_timestamp_variance__minutes: float = field(default=10 / 60, repr=True)
+    max_timestamp_variance__minutes: float = field(default=10, repr=True)
     min_timestamp_variance__minutes: float = field(default=0, repr=True)
     n_splits: float = field(default=5, repr=True)
     n_repeats: float = field(default=10, repr=True)
@@ -183,8 +183,8 @@ class UnivariateAnalysis:
             random_state=self.random_state,
         )
         timestamp_variances = np.linspace(
-            self.min_timestamp_variance__minutes,
-            self.max_timestamp_variance__minutes,
+            self.min_timestamp_variance__minutes / 60,
+            self.max_timestamp_variance__minutes / 60,
             self.n_variances,
         )
 
@@ -199,11 +199,14 @@ class UnivariateAnalysis:
             )
 
             observed = ECDF.interpolate_from_sample(
-                proxy[test] + np.random.normal(0, timestamp_variance, test.size),
+                proxy[test]
+                + np.random.normal(0, timestamp_variance**0.05, test.size),
                 n_points=self.n_points,
             )
             protocol = ECDF.interpolate_from_sample(
-                np.random.normal(self.protocol__hours, timestamp_variance, test.size),
+                np.random.normal(
+                    self.protocol__hours, timestamp_variance**0.05, test.size
+                ),
                 n_points=self.n_points,
             )
 
@@ -513,7 +516,7 @@ class MultivariateAnalysis:
     disparities_axis_name: str = field(repr=True)
     disparities_axis_uom: str = field(repr=True)
     n_variances: int = field(default=10, repr=True)
-    max_timestamp_variance__minutes: float = field(default=10 / 60, repr=True)
+    max_timestamp_variance__minutes: float = field(default=10, repr=True)
     min_timestamp_variance__minutes: float = field(default=0, repr=True)
     n_splits: float = field(default=5, repr=True)
     n_repeats: float = field(default=1, repr=True)
@@ -529,7 +532,7 @@ class MultivariateAnalysis:
     @staticmethod
     def add_variance_to_proxy(X_y: pd.DataFrame, timestamp_variance__min: float):
         X_y["proxy"] += np.random.normal(
-            loc=0, scale=timestamp_variance__min, size=X_y.shape[0]
+            loc=0, scale=(timestamp_variance__min / 60) ** 0.5, size=X_y.shape[0]
         )
         return X_y
 
