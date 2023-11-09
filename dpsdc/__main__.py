@@ -15,8 +15,14 @@ from argparse import ArgumentParser
 from tableone import TableOne
 from hashlib import sha256
 
-from .loaders import load_table_one, load_proxy, load_disparity_axis, load_baselines
-from .quantities import UnivariateAnalysis, MultivariateAnalysis
+from .loaders import (
+    load_table_one,
+    load_proxy,
+    load_disparity_axis,
+    load_baselines,
+    load_proxy_time_series,
+)
+from .quantities import UnivariateAnalysis, MultivariateAnalysis, ExploatoryAnalysis
 from .utils import categorical, continuous
 
 
@@ -118,6 +124,7 @@ if __name__ == "__main__":
     quantile_plot, slopes_plot, proxy_ecdf_plot, disparity_ecdf_plot = experiment.plot(
         results, slopes
     )
+    _, _, fisher_test = results
 
     # 4. Computing Quantile Maps at low resolution (10pts) for descriptive tables
     experiment = UnivariateAnalysis(
@@ -152,9 +159,26 @@ if __name__ == "__main__":
     shap_plots_per_model = experiment.plot_shapvalues(results)
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
 
-    # 6. Saving Results
+    # 6. Descriptive plots
+    time_series_df = load_proxy_time_series(DATA_PATH)
+    experiment = ExploatoryAnalysis(
+        proxy_name="Turning",
+        disparities_axis_name="Weight",
+        disparities_axis_uom="Kg(s)",
+        protocol__hours=2,
+    )
+    boxplots_per_disparity = experiment.boxplot_by_features(
+        proxies_df.proxy, disparity_axis_df
+    )
+    trends_per_disparity = experiment.plot_daily_trends(
+        time_series_df, disparity_axis_df
+    )
+    variance_effect_fig = experiment.plot_timestamp_variance_effect(proxies_df.proxy)
+
+    # 7. Saving Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
     univariate_results_df.to_excel(OUTPUT_PATH / "univariate_results.xlsx")
+    fisher_test.to_excel(OUTPUT_PATH / "ks_fisher_test.xlsx")
     quantile_plot.savefig(OUTPUT_PATH / "quantile_plot.png", dpi=500)
     slopes_plot.savefig(OUTPUT_PATH / "slopes_plot.png", dpi=500)
     proxy_ecdf_plot.savefig(OUTPUT_PATH / "proxy_ecdf_plot.png", dpi=500)
@@ -164,6 +188,7 @@ if __name__ == "__main__":
     observed_predicted_quantiles_plot.savefig(
         OUTPUT_PATH / "observed_predicted_quantiles_plot.png", dpi=500
     )
+    variance_effect_fig.savefig(OUTPUT_PATH / "variance_effect.png", dpi=500)
 
     for model_name, fi in fi_per_model.items():
         fi.to_excel(OUTPUT_PATH / f"{model_name}.xlsx")
@@ -173,3 +198,9 @@ if __name__ == "__main__":
 
     for model_name, fig in shap_plots_per_model.items():
         fig.savefig(OUTPUT_PATH / f"{model_name}_shap_plot.png", dpi=500)
+
+    for disparity_name, fig in boxplots_per_disparity.items():
+        fig.savefig(OUTPUT_PATH / f"{disparity_name}_boxplot.png", dpi=500)
+
+    for disparity_name, fig in trends_per_disparity.items():
+        fig.savefig(OUTPUT_PATH / f"{disparity_name}_trend.png", dpi=500)

@@ -1,5 +1,5 @@
 import unittest
-from .quantities import UnivariateAnalysis, MultivariateAnalysis
+from .quantities import UnivariateAnalysis, MultivariateAnalysis, ExploatoryAnalysis
 import numpy as np
 import pandas as pd
 
@@ -45,3 +45,14 @@ class SetupTest(unittest.TestCase):
         fi_plots_per_model = experiment.plot_fi_boxplots(results)
         shap_plots_per_model = experiment.plot_shapvalues(results)
         test_scores, train_scores, fi_per_model = experiment.to_df(results)
+
+    def test_exploratory_analysis(self):
+        proxy = pd.Series(np.random.uniform(0, 1, (100,)))
+        experiment = ExploatoryAnalysis(
+            proxy_name="proxy_name",
+            disparities_axis_name="disparity_name",
+            disparities_axis_uom="disparity_uom",
+            protocol__hours=2,
+        )
+        # TODO: missing class testing
+        variance_effect_fig = experiment.plot_timestamp_variance_effect(proxy)

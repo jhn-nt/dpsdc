@@ -10,7 +10,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from typing import Any, Callable, Dict, List
 
-from scipy.stats import ttest_1samp
+from scipy.stats import ttest_1samp, ks_2samp, combine_pvalues
 
 import pandas as pd
 
@@ -117,8 +117,7 @@ class ECDF(Base):
         y = ecdf_mean.densities
 
         _ = ax.plot(x, y, color=color, label=label)
-        _ = ax.fill_betweenx(y, x, x + sd, color=color, alpha=0.3)
-        _ = ax.fill_betweenx(y, x - sd, x, color=color, alpha=0.3)
+        _ = ax.fill_betweenx(y, x - sd, x + sd, color=color, alpha=0.3)
         return ax
 
 
@@ -152,8 +151,7 @@ class QuantilePair(Base):
         sd = qq_ci.y.thresholds
 
         _ = ax.plot(x, y, color=color, label=label)
-        _ = ax.fill_between(x, y, y + sd, color=color, alpha=0.3)
-        _ = ax.fill_between(x, y - sd, y, color=color, alpha=0.3)
+        _ = ax.fill_between(x, y - sd, y + sd, color=color, alpha=0.3)
         return ax
 
 
@@ -182,6 +180,8 @@ class UnivariateAnalysis:
             n_repeats=self.n_repeats,
             random_state=self.random_state,
         )
+
+        # Converting Minutes to Hours
         timestamp_variances = np.linspace(
             self.min_timestamp_variance__minutes / 60,
             self.max_timestamp_variance__minutes / 60,
@@ -190,40 +190,65 @@ class UnivariateAnalysis:
 
         trace = []
         baseline = []
+        pvalue = []
+        fisher_test = lambda x: combine_pvalues(x).pvalue
 
         for timestamp_variance, (_, test) in product(
             timestamp_variances, cv.split(disparity_axis, proxy)
         ):
+            observed_sample = proxy[test] + np.random.normal(
+                0, timestamp_variance**0.5, test.size
+            )
+            protocol_sample = np.random.normal(
+                self.protocol__hours, timestamp_variance**0.5, test.size
+            )
+
             x = ECDF.interpolate_from_sample(
                 disparity_axis[test], n_points=self.n_points
             )
 
             observed = ECDF.interpolate_from_sample(
-                proxy[test]
-                + np.random.normal(0, timestamp_variance**0.05, test.size),
+                observed_sample,
                 n_points=self.n_points,
             )
             protocol = ECDF.interpolate_from_sample(
-                np.random.normal(
-                    self.protocol__hours, timestamp_variance**0.05, test.size
-                ),
+                protocol_sample,
                 n_points=self.n_points,
             )
 
             trace.append(QuantilePair.from_ecdfs(x, observed))
             baseline.append(QuantilePair.from_ecdfs(x, protocol))
+            pvalue.append(
+                self.run_kolmogorv_sminorv_test(observed_sample, protocol_sample)
+            )
 
-        return trace, baseline
+        return trace, baseline, pd.concat(pvalue, axis=1).apply(fisher_test, axis=1)
 
     def test_null_hypothesis_that_observed_quantile_mapping_adheres_to_protocol(
-        self, trace, baseline
+        self, trace, baseline, *args
     ):
         trace_slopes = np.asarray([*map(lambda x: x.slope, trace)])
         baseline_slopes = np.asarray([*map(lambda x: x.slope, baseline)])
         pvalue = ttest_ind(trace_slopes, baseline_slopes).pvalue
         return trace_slopes, baseline_slopes, pvalue
 
-    def to_df(self, trace, baseline):
+    @staticmethod
+    def run_kolmogorv_sminorv_test(observed_sample, protocol_sample):
+        return pd.Series(
+            {
+                "two-sided": ks_2samp(
+                    observed_sample, protocol_sample, alternative="two-sided"
+                ).pvalue,
+                "less": ks_2samp(
+                    observed_sample, protocol_sample, alternative="less"
+                ).pvalue,
+                "greater": ks_2samp(
+                    observed_sample, protocol_sample, alternative="greater"
+                ).pvalue,
+            }
+        )
+
+    def to_df(self, trace, baseline, *args):
         x = np.stack([*map(lambda qq: qq.x.thresholds, trace)])
         obs = np.stack([*map(lambda qq: qq.y.thresholds, trace)])
         pro = np.stack([*map(lambda qq: qq.y.thresholds, baseline)])
@@ -252,8 +277,8 @@ class UnivariateAnalysis:
         table_df[("p", "")] = pval_f(data[[1, 2]], 0)
         return table_df
 
-    def plot(self, results, slopes):
-        trace, baseline = results
+    def plot(self, results, slopes, *args):
+        trace, baseline, fisher_p = results
         observed_slopes, protocol_slopes, p = slopes
 
         # 1. Plotting QQ PLots
@@ -266,6 +291,12 @@ class UnivariateAnalysis:
         _ = ax.set_xlabel(
             f"{self.disparities_axis_name} Quantile [{self.disparities_axis_uom}]"
         )
+
+        _ = ax.text(
+            sum(ax.get_xlim()) / 2,
+            sum(ax.get_ylim()) / 2,
+            f"p:{fisher_p['two-sided']:.4f}",
+        )
         _ = ax.grid(alpha=0.3)
         _ = ax.legend()
 
@@ -275,11 +306,13 @@ class UnivariateAnalysis:
             protocol_slopes,
             label=f"Protocol: {np.mean(protocol_slopes):.4f}  (SD={np.std(protocol_slopes):.4f})",
             color="k",
+            alpha=0.5,
         )
         _ = ax.hist(
             observed_slopes,
             label=f"Observed: {np.mean(observed_slopes):.4f}  (SD={np.std(observed_slopes):.4f})",
             color=cm.tab10(0),
+            alpha=0.5,
         )
         _ = ax.grid(alpha=0.3)
         _ = ax.set_xlabel(f"Hour(s) Quantile/ {self.disparities_axis_uom} Quantile")
@@ -297,6 +330,11 @@ class UnivariateAnalysis:
         _ = ax.set_xlabel(f"Average {self.proxy_name} Interval [Hour(s)]")
         _ = ax.set_ylabel("Density [AU]")
         _ = ax.legend()
+        _ = ax.text(
+            sum(ax.get_xlim()) / 2,
+            sum(ax.get_ylim()) / 2,
+            f"p:{fisher_p['two-sided']:.4f}",
+        )
         _ = ax.grid(alpha=0.3)
 
         # 4. Plotting ECDF for the disparity axis
@@ -553,15 +591,8 @@ class MultivariateAnalysis:
             _ = ax.plot(mn.q_true, mn.q_pred, label=name, color=cm.tab10(i))
             _ = ax.fill_between(
                 mn.q_true,
-                mn.q_pred,
-                mn.q_pred + sd.q_pred,
-                color=cm.tab10(i),
-                alpha=0.3,
-            )
-            _ = ax.fill_between(
-                mn.q_true,
                 mn.q_pred - sd.q_pred,
-                mn.q_pred,
+                mn.q_pred + sd.q_pred,
                 color=cm.tab10(i),
                 alpha=0.3,
             )
@@ -725,3 +756,179 @@ class MultivariateAnalysis:
         scores = pd.concat(scores, axis=0)
 
         return scores, curves, dict(traces), dict(shapvals)
+
+
+@dataclass(frozen=True)
+class ExploatoryAnalysis:
+    proxy_name: str = field(repr=True)
+    disparities_axis_name: str = field(repr=True)
+    disparities_axis_uom: str = field(repr=True)
+    protocol__hours: float = field(repr=True)
+    n_variances: int = field(default=5, repr=True)
+    max_timestamp_variance__minutes: float = field(default=10, repr=True)
+    min_timestamp_variance__minutes: float = field(default=1e-3, repr=True)
+
+    @staticmethod
+    def discretize_dataframe(df: pd.DataFrame, quantiles: List[int]):
+        temp = df.copy()
+
+        for feature in continuous(temp):
+            temp[feature] = pd.qcut(temp[feature], quantiles)
+
+        return temp
+
+    @staticmethod
+    def boxplot_by_features(
+        value: pd.Series,
+        features: pd.DataFrame,
+        quantiles: List[int] = [0.0, 0.25, 0.5, 0.75, 1.0],
+        y_label="",
+    ):
+        temp = ExploatoryAnalysis.discretize_dataframe(features, quantiles)
+        df = pd.concat([temp, value], axis=1)
+
+        output = {}
+        for column in temp.columns:
+            fig, ax = plt.subplots()
+            df.boxplot(value.name, by=column, ax=ax, showfliers=False, rot=45)
+            _ = ax.set_title(column.capitalize())
+            _ = ax.set_xlabel("")
+            _ = ax.set_ylabel(y_label)
+            fig.suptitle("")
+            output[column] = fig
+
+        return output
+
+    def build_boxplots(self, proxy, disparities):
+        return self.boxplot_by_features(
+            proxy, disparities, y_label=f"{self.proxy_name} [Hour(s)]"
+        )
+
+    @staticmethod
+    def histplot(ax, data: pd.Series, n_bins: int = 100, iqr=(0.01, 0.99), **kwargs):
+        q = data.quantile(iqr).values
+        resolution = np.diff(q) / n_bins
+        _ = ax.hist(data, bins=np.arange(*q, resolution), **kwargs)
+        return ax
+
+    @staticmethod
+    def plot_trend_new(dataframe: pd.DataFrame, dis_col: str, proxy_name: str):
+        main_trend_data = (
+            dataframe.groupby(["day", dis_col])["average_item_interval"]
+            .mean()
+            .reset_index()
+        )
+
+        std_dev = (
+            dataframe.groupby(["day", dis_col])["average_item_interval"]
+            .apply(lambda x: np.std(x))
+            .reset_index()
+        )
+
+        fig, ax = plt.subplots()
+
+        for category in main_trend_data[dis_col].unique():
+            subset = main_trend_data[main_trend_data[dis_col] == category]
+
+            ax.plot(
+                subset["day"],
+                subset["average_item_interval"],
+                label=f"{dis_col}: {category}",
+                marker="o",
+            )
+
+            std_subset = std_dev[std_dev[dis_col] == category]
+            confidence_intervals = std_subset["average_item_interval"]
+            ax.fill_between(
+                np.array(subset["day"], dtype=float),
+                (subset["average_item_interval"] - confidence_intervals),
+                (subset["average_item_interval"] + confidence_intervals),
+                alpha=0.2,
+            )
+
+        ax.set_xlabel("Day")
+        ax.set_ylabel(f"Average {proxy_name} Interval [Hour(s)]")
+        ax.set_title(dis_col.capitalize())
+
+        ax.set_xlim([0, 10])
+        ax.set_ylim([0, 5])
+        ax.legend()
+
+        return fig
+
+    @staticmethod
+    def plot_by_general_population(dataframe: pd.DataFrame, proxy_name: str):
+        main_trend_data = (
+            dataframe.groupby("day")["average_item_interval"].mean().reset_index()
+        )
+
+        std_dev = dataframe.groupby("day")["average_item_interval"].std().reset_index()
+
+        fig, ax = plt.subplots()
+        ax.plot(
+            main_trend_data["day"],
+            main_trend_data["average_item_interval"],
+            label="Main Trend",
+            color="b",
+            marker="o",
+        )  # Giovanni: added markers for improved readability
+
+        ax.fill_between(
+            np.array(main_trend_data["day"], dtype=float),
+            main_trend_data["average_item_interval"] - std_dev["average_item_interval"],
+            main_trend_data["average_item_interval"] + std_dev["average_item_interval"],
+            alpha=0.2,
+            color="b",
+            label="Confidence Interval (Std Dev)",
+        )
+
+        ax.set_xlabel("Day")
+        ax.set_ylabel(f"Average {proxy_name} Interval [Hour(s)]")
+        ax.legend()
+
+        ax.set_ylim([0, 5])
+        ax.set_xlim([0, 10])
+
+        return fig
+
+    def plot_daily_trends(
+        self,
+        daily_proxy: pd.DataFrame,
+        features: pd.DataFrame,
+        quantiles: List[int] = [0.0, 0.25, 0.5, 0.75, 1.0],
+    ):
+        assert "day" in daily_proxy.columns
+        assert "average_item_interval" in daily_proxy.columns
+
+        temp = ExploatoryAnalysis.discretize_dataframe(features, quantiles)
+        axis_features = temp.columns.to_list()
+
+        df = daily_proxy.merge(temp, on="stay_id")
+
+        output = {}
+        for feature in axis_features:
+            output[feature] = self.plot_trend_new(df, feature, self.proxy_name)
+
+        output["general"] = self.plot_by_general_population(df, self.proxy_name)
+
+        return output
+
+    def plot_timestamp_variance_effect(self, proxy: pd.Series):
+        fig, ax = plt.subplots(
+            1, self.n_variances, figsize=(5 * self.n_variances, 5), sharex=True
+        )
+
+        variances = np.logspace(
+            np.log10((self.min_timestamp_variance__minutes / 60) ** 0.5),
+            np.log10((self.max_timestamp_variance__minutes / 60) ** 0.5),
+            self.n_variances,
+        )
+
+        for cax, variance in zip(ax, variances):
+            data = proxy + np.random.normal(0, variance, (proxy.shape[0],))
+            self.histplot(cax, data)
+            _ = cax.set_title(f"{(variance**2)*60:.2f} [Min]")
+            _ = cax.grid(alpha=0.3)
+            _ = cax.set_xlabel(f"Average {self.proxy_name} Interval [Hour(s)]")
+            _ = cax.set_ylabel("Frequency [#]")
+        return fig
