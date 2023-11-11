@@ -106,40 +106,21 @@ if __name__ == "__main__":
     table_one = TableOne(df, categorical=categorical(df), groupby="proxy", pval=True)
 
     # 3. Computing Quantile Maps with a high resolution (100pts) for plots and stats
-    proxy_df = load_proxy(DATA_PATH)
-    disparities_df = load_disparity_axis(DATA_PATH)
+    disparity_axis_df = load_disparity_axis(DATA_PATH)
+    proxies_df = load_proxy(DATA_PATH)
     experiment = UnivariateAnalysis(
         proxy_name="Turning",
         disparities_axis_name="Weight",
         disparities_axis_uom="Kg(s)",
         protocol__hours=2,
-        n_points=100,
     )
-    results = experiment.estimate_quantile_mappings_between_proxy_and_disparity_axis(
-        proxy_df.proxy, disparities_df["weight"]
-    )
-    slopes = experiment.test_null_hypothesis_that_observed_quantile_mapping_adheres_to_protocol(
-        *results
-    )
-    quantile_plot, slopes_plot, proxy_ecdf_plot, disparity_ecdf_plot = experiment.plot(
-        results, slopes
-    )
-    _, _, fisher_test = results
 
-    # 4. Computing Quantile Maps at low resolution (10pts) for descriptive tables
-    experiment = UnivariateAnalysis(
-        proxy_name="Turning",
-        disparities_axis_name="Weight",
-        disparities_axis_uom="Kg(s)",
-        protocol__hours=2,
-        n_points=10,
-    )
-    results = experiment.estimate_quantile_mappings_between_proxy_and_disparity_axis(
-        proxy_df.proxy, disparities_df["weight"]
-    )
-    univariate_results_df = experiment.to_df(*results)
+    scores = experiment.run(disparity_axis_df.weight.values, proxies_df.proxy.values)
+    regression_plots = experiment.plot_regression_by_variance(scores)
+    ecdf_plots = experiment.plot_ecdf_by_variance(scores)
+    regression_table, fisher_tests = experiment.to_df(scores)
 
-    # 5. Quantile regression to adjust for confounders
+    # 4. Quantile regression to adjust for confounders
     baseline_df = load_baselines(DATA_PATH)
     disparity_axis_df = load_disparity_axis(DATA_PATH)
     proxies_df = load_proxy(DATA_PATH)
@@ -159,7 +140,7 @@ if __name__ == "__main__":
     shap_plots_per_model = experiment.plot_shapvalues(results)
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
 
-    # 6. Descriptive plots
+    # 5. Descriptive plots
     time_series_df = load_proxy_time_series(DATA_PATH)
     experiment = ExploatoryAnalysis(
         proxy_name="Turning",
@@ -175,14 +156,10 @@ if __name__ == "__main__":
     )
     variance_effect_fig = experiment.plot_timestamp_variance_effect(proxies_df.proxy)
 
-    # 7. Saving Results
+    # 6. Saving Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
-    univariate_results_df.to_excel(OUTPUT_PATH / "univariate_results.xlsx")
-    fisher_test.to_excel(OUTPUT_PATH / "ks_fisher_test.xlsx")
-    quantile_plot.savefig(OUTPUT_PATH / "quantile_plot.png", dpi=500)
-    slopes_plot.savefig(OUTPUT_PATH / "slopes_plot.png", dpi=500)
-    proxy_ecdf_plot.savefig(OUTPUT_PATH / "proxy_ecdf_plot.png", dpi=500)
-    disparity_ecdf_plot.savefig(OUTPUT_PATH / "disparity_ecdf_plot.png", dpi=500)
+    regression_table.to_excel(OUTPUT_PATH / "univariate_regression_results.xlsx")
+    fisher_tests.to_excel(OUTPUT_PATH / "univariate_significance_tests.xlsx")
     test_scores.to_excel(OUTPUT_PATH / "test_scores.xlsx")
     train_scores.to_excel(OUTPUT_PATH / "train_scores.xlsx")
     observed_predicted_quantiles_plot.savefig(
@@ -204,3 +181,15 @@ if __name__ == "__main__":
 
     for disparity_name, fig in trends_per_disparity.items():
         fig.savefig(OUTPUT_PATH / f"{disparity_name}_trend.png", dpi=500)
+
+    if ~(OUTPUT_PATH / "regression_plots").is_dir():
+        os.mkdir(OUTPUT_PATH / "regression_plots")
+
+    for variance, fig in regression_plots.items():
+        fig.savefig(OUTPUT_PATH / "regression_plots" / f"{variance}.png", dpi=500)
+
+    if ~(OUTPUT_PATH / "ecdf_plots").is_dir():
+        os.mkdir(OUTPUT_PATH / "ecdf_plots")
+
+    for variance, fig in ecdf_plots.items():
+        fig.savefig(OUTPUT_PATH / "ecdf_plots" / f"{variance}.png", dpi=500)

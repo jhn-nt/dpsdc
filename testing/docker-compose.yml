@@ -1,6 +1,4 @@
 services:
   test:
     image: python:3.10.13
-    command: bash -c "
-      pip install "git+https://github.com/jhn-nt/dpsdc.git@turnings" 
-      && python3 -m unittest dpsdc.tests"
+    command: bash -c " pip install "git+https://github.com/jhn-nt/dpsdc.git@turnings" && python3 -m unittest dpsdc.tests"

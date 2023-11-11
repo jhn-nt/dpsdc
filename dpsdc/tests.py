@@ -14,18 +14,12 @@ class SetupTest(unittest.TestCase):
             disparities_axis_name="disparity_name",
             disparities_axis_uom="disparity_uom",
             protocol__hours=1,
-            n_points=100,
+            n_quantiles=100,
         )
-        results = (
-            experiment.estimate_quantile_mappings_between_proxy_and_disparity_axis(
-                proxy, disparity_axis
-            )
-        )
-        slopes = experiment.test_null_hypothesis_that_observed_quantile_mapping_adheres_to_protocol(
-            *results
-        )
-
-        _ = experiment.plot(results, slopes)
+        scores = experiment.run(disparity_axis, proxy)
+        regression_plots = experiment.plot_regression_by_variance(scores)
+        ecdf_plots = experiment.plot_ecdf_by_variance(scores)
+        regression_table, fisher_tests = experiment.to_df(scores)
 
     def test_multivariate_analysis(self):
         X_y = pd.DataFrame(np.random.uniform(0, 1, (1000, 100)))

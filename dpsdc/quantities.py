@@ -23,6 +23,7 @@ from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
 from sklearn.preprocessing import QuantileTransformer, OneHotEncoder
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import r2_score
 
 from lightgbm import LGBMRegressor
 from crlearn.evaluation import crossvalidate_regression
@@ -78,6 +79,23 @@ class ECDF(Base):
         return cls(thresholds=np.empty(n_thresholds), densities=np.empty(n_thresholds))
 
     @classmethod
+    def from_sklearn(
+        cls,
+        x: ArrayLike,
+        quantiles: List[float] = np.arange(0, 1.01, 0.01),
+        random_state: int = 0,
+    ):
+        transformer = QuantileTransformer(random_state=random_state).fit(
+            np.asarray(x).reshape(-1, 1)
+        )
+        return cls(
+            densities=np.squeeze(quantiles),
+            thresholds=np.squeeze(
+                transformer.inverse_transform(quantiles.reshape(-1, 1))
+            ),
+        )
+
+    @classmethod
     def from_sample(
         cls,
         x: ArrayLike,
@@ -122,229 +140,283 @@ class ECDF(Base):
 
 
 @dataclass(frozen=True, slots=True)
-class QuantilePair(Base):
-    """Dataclass implementing Quantile-Quantile Pair analysis.
-    This represent an auxiliary class that stores two ECDF from continuous random variables x and y.
-    It then computes the quantile-quantile slope and bias of the resulting Qunatile-Quantile Relation.
-    """
-
-    x: ECDF = field(repr=False)
-    y: ECDF = field(repr=False)
-    slope: float
-    bias: float
-
-    @classmethod
-    def from_ecdfs(cls, x, y):
-        slope, bias = np.polyfit(x.thresholds, y.thresholds, 1)
-        return QuantilePair(x=x, y=y, slope=slope, bias=bias)
-
-    def interpolate(self):
-        return self.x.thresholds * self.slope + self.bias
-
-    @staticmethod
-    def plot_with_confidence_intervals(ax, qq_list, color, label):
-        qq_mean = np.mean(qq_list)
-        qq_ci = 1.96 * np.std(qq_list)
-
-        x = qq_mean.x.thresholds
-        y = qq_mean.y.thresholds
-        sd = qq_ci.y.thresholds
-
-        _ = ax.plot(x, y, color=color, label=label)
-        _ = ax.fill_between(x, y - sd, y + sd, color=color, alpha=0.3)
-        return ax
-
-
-@dataclass(frozen=True, slots=True)
 class UnivariateAnalysis:
     proxy_name: str = field(repr=True)
     disparities_axis_name: str = field(repr=True)
     disparities_axis_uom: str = field(repr=True)
     protocol__hours: float = field(repr=True)
-    n_points: int = field(repr=True)
     n_variances: int = field(default=10, repr=True)
     max_timestamp_variance__minutes: float = field(default=10, repr=True)
     min_timestamp_variance__minutes: float = field(default=0, repr=True)
+    n_quantiles: int = 100
+    order: int = 1
     n_splits: float = field(default=5, repr=True)
     n_repeats: float = field(default=10, repr=True)
     random_state: float = field(default=0, repr=True)
 
-    def estimate_quantile_mappings_between_proxy_and_disparity_axis(
-        self, proxy: pd.Series, disparity_axis: pd.Series
-    ):
-        proxy = proxy.values
-        disparity_axis = disparity_axis.values
+    @staticmethod
+    def add_variance(x, variance):
+        return x + np.random.normal(0.0, variance**0.5, x.shape)
 
+    def get_protocol(self, x, variance):
+        return np.random.normal(self.protocol__hours, variance**0.5, x.shape)
+
+    @staticmethod
+    def crossvalidate_experiment(x, y, cv, order, aggfunc, random_state, name):
+        xmap = QuantileTransformer(random_state=random_state)
+        ymap = QuantileTransformer(random_state=random_state)
+
+        def aggregate(x, y):
+            x_t, y_t = (
+                pd.DataFrame({"x": np.round(x, order), "y": y})
+                .groupby("x")
+                .agg(aggfunc)
+                .reset_index()
+                .values.T
+            )
+            return x_t, y_t
+
+        score_f = lambda y, y_pred, fold, coef: pd.Series(
+            {
+                "r2": r2_score(np.squeeze(y), y_pred),
+                # "mse":mean_squared_error(np.squeeze(y),y_pred),
+                "fold": fold,
+                "name": name,
+                "slope": coef[0],
+                "bias": coef[1],
+            }
+        )
+
+        scores = []
+        traces = []
+        for fold, (train, _) in enumerate(cv.split(x, y)):
+            x_q = np.squeeze(xmap.fit_transform(x[train].reshape(-1, 1)))
+            y_q = np.squeeze(ymap.fit_transform(y[train].reshape(-1, 1)))
+            x_q_agg, y_q_agg = aggregate(x_q, y_q)
+
+            coef = np.polyfit(x_q_agg, y_q_agg, deg=1)
+            y_q_agg_pred = np.polyval(coef, x_q_agg)
+
+            scores.append(score_f(y_q_agg, y_q_agg_pred, fold, coef))
+            traces.append(
+                pd.DataFrame(
+                    {
+                        "x": x_q_agg,
+                        "y_true": y_q_agg,
+                        "y_pred": y_q_agg_pred,
+                        "name": name,
+                        "fold": fold,
+                    }
+                )
+            )
+
+        return pd.concat(scores, axis=1).T, pd.concat(traces, axis=0)
+
+    @staticmethod
+    def crossvalidate_ecdf(x, protocol, observed, cv, name, n_quantiles, random_state):
+        ecdfs = []
+        pvals = []
+        pfunc = lambda x, y, fold: pd.Series(
+            {
+                "less": ks_2samp(x, y, alternative="less").pvalue,
+                "greater": ks_2samp(x, y, alternative="greater").pvalue,
+                "two-sided": ks_2samp(x, y, alternative="two-sided").pvalue,
+                "name": name,
+                "fold": fold,
+            }
+        )
+
+        for fold, (_, train) in enumerate(cv.split(x, observed, protocol)):
+            quantiles = ECDF.interpolate_from_sample(
+                x[train], n_points=n_quantiles
+            ).densities
+            q_x = ECDF.interpolate_from_sample(
+                x[train], n_points=n_quantiles
+            ).thresholds
+            q_observed = ECDF.interpolate_from_sample(
+                observed[train], n_points=n_quantiles
+            ).thresholds
+            q_protocol = ECDF.interpolate_from_sample(
+                protocol[train], n_points=n_quantiles
+            ).thresholds
+            ecdfs.append(
+                pd.DataFrame(
+                    {
+                        "quantile": quantiles,
+                        "x": q_x,
+                        "observed": q_observed,
+                        "protocol": q_protocol,
+                        "name": name,
+                        "fold": fold,
+                    }
+                )
+            )
+
+            pvals.append(pfunc(observed[train], protocol[train], fold))
+
+        return pd.concat(ecdfs), pd.concat(pvals, axis=1).T
+
+    def run(self, disparity: ArrayLike, proxy: ArrayLike):
+        # Schedule to test for different additive variances
+        schedule__minutes = np.linspace(
+            self.min_timestamp_variance__minutes,
+            self.max_timestamp_variance__minutes,
+            self.n_variances + 1,
+        )
+
+        # Each variance is tested through repeated cross-validation
         cv = RepeatedKFold(
             n_splits=self.n_splits,
             n_repeats=self.n_repeats,
             random_state=self.random_state,
         )
 
-        # Converting Minutes to Hours
-        timestamp_variances = np.linspace(
-            self.min_timestamp_variance__minutes / 60,
-            self.max_timestamp_variance__minutes / 60,
-            self.n_variances,
+        x = np.asarray(disparity).reshape(-1, 1)
+        results = []
+        ecdfs = []
+        for variance__minutes in schedule__minutes:
+            name = f"{variance__minutes}"
+            y = self.add_variance(np.asarray(proxy), variance__minutes / 60)
+            y_baseline = self.get_protocol(np.asarray(proxy), variance__minutes / 60)
+
+            results.append(
+                self.crossvalidate_experiment(
+                    x,
+                    y,
+                    cv=cv,
+                    aggfunc=np.mean,
+                    random_state=self.random_state,
+                    order=self.order,
+                    name=name,
+                )
+            )
+            ecdfs.append(
+                self.crossvalidate_ecdf(
+                    x,
+                    y_baseline,
+                    y,
+                    cv=cv,
+                    n_quantiles=self.n_quantiles,
+                    random_state=self.random_state,
+                    name=name,
+                )
+            )
+
+        return (
+            pd.concat(map(lambda x: x[0], results), axis=0),
+            pd.concat(map(lambda x: x[1], results), axis=0),
+            pd.concat(map(lambda x: x[0], ecdfs), axis=0),
+            pd.concat(map(lambda x: x[1], ecdfs), axis=0),
         )
 
-        trace = []
-        baseline = []
-        pvalue = []
-        fisher_test = lambda x: combine_pvalues(x).pvalue
+    def plot_regression(self, results, variance, fold=0):
+        # getting data
+        x = results[1].query(f"fold=={fold}").query(f"name=='{variance}'").x
+        y_true = results[1].query(f"fold=={fold}").query(f"name=='{variance}'").y_true
+        y_pred = results[1].query(f"fold=={fold}").query(f"name=='{variance}'").y_pred
 
-        for timestamp_variance, (_, test) in product(
-            timestamp_variances, cv.split(disparity_axis, proxy)
-        ):
-            observed_sample = proxy[test] + np.random.normal(
-                0, timestamp_variance**0.5, test.size
-            )
-            protocol_sample = np.random.normal(
-                self.protocol__hours, timestamp_variance**0.5, test.size
-            )
+        # preparing plot legend string
+        crossval_results = self.format_regression_scores(
+            results[0].query(f"name=='{variance}'")
+        )[0]
+        vals = np.squeeze(crossval_results.astype(str).values).tolist()
+        names = crossval_results.columns.to_list()
+        legend = "\n".join([f"{t}: {v}" for (t, v) in zip(names, vals)])
 
-            x = ECDF.interpolate_from_sample(
-                disparity_axis[test], n_points=self.n_points
-            )
+        fig, ax = plt.subplots()
+        _ = ax.scatter(x, y_true)
+        _ = ax.plot(x, y_pred, color="k", label=legend)
+        _ = ax.grid(alpha=0.3)
 
-            observed = ECDF.interpolate_from_sample(
-                observed_sample,
-                n_points=self.n_points,
-            )
-            protocol = ECDF.interpolate_from_sample(
-                protocol_sample,
-                n_points=self.n_points,
-            )
+        _ = ax.set_xticks(np.arange(0, 1.1, 0.1))
+        _ = ax.set_ylabel(f"Average {self.proxy_name} Interval Quantile [AU]")
+        _ = ax.set_xlabel(f"{self.disparities_axis_name} Quantile [AU]")
+        _ = ax.set_title(f"{variance} Minutes")
+        _ = ax.legend()
+        return fig
 
-            trace.append(QuantilePair.from_ecdfs(x, observed))
-            baseline.append(QuantilePair.from_ecdfs(x, protocol))
-            pvalue.append(
-                self.run_kolmogorv_sminorv_test(observed_sample, protocol_sample)
-            )
-
-        return trace, baseline, pd.concat(pvalue, axis=1).apply(fisher_test, axis=1)
-
-    def test_null_hypothesis_that_observed_quantile_mapping_adheres_to_protocol(
-        self, trace, baseline, *args
-    ):
-        trace_slopes = np.asarray([*map(lambda x: x.slope, trace)])
-        baseline_slopes = np.asarray([*map(lambda x: x.slope, baseline)])
-        pvalue = ttest_ind(trace_slopes, baseline_slopes).pvalue
-        return trace_slopes, baseline_slopes, pvalue
+    def plot_regression_by_variance(self, results, fold=0):
+        variances = results[1].name.unique()
+        return {
+            variance: self.plot_regression(results, variance) for variance in variances
+        }
 
     @staticmethod
-    def run_kolmogorv_sminorv_test(observed_sample, protocol_sample):
-        return pd.Series(
-            {
-                "two-sided": ks_2samp(
-                    observed_sample, protocol_sample, alternative="two-sided"
-                ).pvalue,
-                "less": ks_2samp(
-                    observed_sample, protocol_sample, alternative="less"
-                ).pvalue,
-                "greater": ks_2samp(
-                    observed_sample, protocol_sample, alternative="greater"
-                ).pvalue,
-            }
+    def format_regression_scores(df):
+        df.name = df.name.astype(float)
+        table = UnivariateAnalysis.format_table(df)
+        table["p"] = df.groupby("name").slope.agg(
+            lambda x: ttest_1samp(x.astype(float), 0.0).pvalue
         )
+        return table, combine_pvalues(table.p).pvalue
 
-    def to_df(self, trace, baseline, *args):
-        x = np.stack([*map(lambda qq: qq.x.thresholds, trace)])
-        obs = np.stack([*map(lambda qq: qq.y.thresholds, trace)])
-        pro = np.stack([*map(lambda qq: qq.y.thresholds, baseline)])
-        pct = (obs - pro) / pro
-        data = np.stack([x, pro, obs, pct])
+    @staticmethod
+    def format_table(df):
+        df = df.drop("fold", axis=1)
+        aggregated_df = df.groupby("name").agg(UnivariateAnalysis.print_mean_std)
+        return aggregated_df
 
-        pval_f = lambda pop, a: ttest_ind(*pop, axis=a).pvalue
-        fmt_f = lambda x: np.apply_along_axis(
-            lambda x: "{0:.2f} [{1:.2f} , {2:.2f}]".format(*x),
-            0,
-            np.quantile(x, [0.5, 0.05, 0.95], axis=1),
+    @staticmethod
+    def print_mean_std(series):
+        return f"{series.mean():.4f} (SD={series.std():.4f})"
+
+    def plot_ecdf_by_variance(self, results):
+        def plot_ecdf(ax, density, mn, sd, color="k", **kwargs):
+            _ = ax.plot(mn, density, color=color, **kwargs)
+            _ = ax.fill_betweenx(
+                density, mn - 1.96 * sd, mn + 1.96 * sd, color=color, alpha=0.3
+            )
+            _ = ax.set_ylabel("F [AU]")
+            _ = ax.set_xlabel(f"Average {self.proxy_name} Interval [Hoour(s)]")
+            return ax
+
+        def print_pval(ix):
+            ps = results[3].query(ix)["two-sided"].astype(float).values
+            pval = combine_pvalues(ps).pvalue
+            return f"p:{pval:.4f}"
+
+        output = {}
+        for ix, group in results[2].groupby("name")[
+            ["quantile", "x", "observed", "protocol"]
+        ]:
+            data = group.groupby("quantile").agg(["mean", "std"]).swaplevel(1, 0, 1)
+
+            fig, ax = plt.subplots()
+            ax = plot_ecdf(
+                ax,
+                data.index,
+                data["mean"].observed,
+                data["std"].observed,
+                color=cm.tab10(0),
+                label="observed",
+            )
+            ax = plot_ecdf(
+                ax,
+                data.index,
+                data["mean"].protocol,
+                data["std"].protocol,
+                color="k",
+                label="protocol",
+            )
+
+            _ = ax.set_yticks(np.arange(0, 1.1, 0.1))
+            _ = ax.grid(alpha=0.3)
+            _ = ax.text(sum(ax.get_xlim()) / 2, sum(ax.get_ylim()) / 2, print_pval(ix))
+            _ = ax.set_title(f"{ix} Minutes")
+            _ = ax.legend()
+            output[ix] = fig
+
+        return output
+
+    def to_df(self, results):
+        regression_df, regression_fisher = self.format_regression_scores(results[0])
+        ecdf_tests = (
+            results[3]
+            .drop(["name", "fold"], axis=1)
+            .apply(lambda x: combine_pvalues(x.astype(float)).pvalue)
         )
-
-        header = pd.MultiIndex.from_tuples(
-            [
-                (self.disparities_axis_name, self.disparities_axis_uom),
-                ("Protocol", "Hour(s)"),
-                ("Observed", "Hour(s)"),
-                ("Change", "%"),
-            ]
-        )
-        table_df = pd.DataFrame(
-            fmt_f(data).T,
-            columns=header,
-        )
-        table_df[("p", "")] = pval_f(data[[1, 2]], 0)
-        return table_df
-
-    def plot(self, results, slopes, *args):
-        trace, baseline, fisher_p = results
-        observed_slopes, protocol_slopes, p = slopes
-
-        # 1. Plotting QQ PLots
-        fig1, ax = plt.subplots()
-        _ = QuantilePair.plot_with_confidence_intervals(ax, baseline, "k", "Protocol")
-        _ = QuantilePair.plot_with_confidence_intervals(
-            ax, trace, cm.tab10(0), "Observed"
-        )
-        _ = ax.set_ylabel(f"Average {self.proxy_name} Interval Quantile [Hour(s)]")
-        _ = ax.set_xlabel(
-            f"{self.disparities_axis_name} Quantile [{self.disparities_axis_uom}]"
-        )
-
-        _ = ax.text(
-            sum(ax.get_xlim()) / 2,
-            sum(ax.get_ylim()) / 2,
-            f"p:{fisher_p['two-sided']:.4f}",
-        )
-        _ = ax.grid(alpha=0.3)
-        _ = ax.legend()
-
-        # 2. Plotting Distributions of slopes
-        fig2, ax = plt.subplots()
-        _ = ax.hist(
-            protocol_slopes,
-            label=f"Protocol: {np.mean(protocol_slopes):.4f}  (SD={np.std(protocol_slopes):.4f})",
-            color="k",
-            alpha=0.5,
-        )
-        _ = ax.hist(
-            observed_slopes,
-            label=f"Observed: {np.mean(observed_slopes):.4f}  (SD={np.std(observed_slopes):.4f})",
-            color=cm.tab10(0),
-            alpha=0.5,
-        )
-        _ = ax.grid(alpha=0.3)
-        _ = ax.set_xlabel(f"Hour(s) Quantile/ {self.disparities_axis_uom} Quantile")
-        _ = ax.set_ylabel("#")
-        _ = ax.legend()
-        _ = ax.text(sum(ax.get_xlim()) / 2, sum(ax.get_ylim()) / 2, f"p={p:.2f}")
-
-        # 3. Plotting ECDFs for observed and protocollar proxy.
-        observed = [*map(lambda qq: qq.y, trace)]
-        protocol = [*map(lambda qq: qq.y, baseline)]
-
-        fig3, ax = plt.subplots()
-        ECDF.plot_with_confidence_intervals(ax, observed, cm.tab10(0), "Observed")
-        ECDF.plot_with_confidence_intervals(ax, protocol, "k", "Protocol")
-        _ = ax.set_xlabel(f"Average {self.proxy_name} Interval [Hour(s)]")
-        _ = ax.set_ylabel("Density [AU]")
-        _ = ax.legend()
-        _ = ax.text(
-            sum(ax.get_xlim()) / 2,
-            sum(ax.get_ylim()) / 2,
-            f"p:{fisher_p['two-sided']:.4f}",
-        )
-        _ = ax.grid(alpha=0.3)
-
-        # 4. Plotting ECDF for the disparity axis
-        disparity_axis_ecdfs = [*map(lambda qq: qq.x, trace)]
-        fig4, ax = plt.subplots()
-        ECDF.plot_with_confidence_intervals(ax, disparity_axis_ecdfs, cm.tab10(0), "")
-        _ = ax.set_xlabel(f"{self.disparities_axis_name} [{self.disparities_axis_uom}]")
-        _ = ax.set_ylabel("Density [AU]")
-        _ = ax.grid(alpha=0.3)
-        return fig1, fig2, fig3, fig4
+        ecdf_tests["regression_fisher"] = regression_fisher
+        return regression_df, ecdf_tests
 
 
 @dataclass(frozen=True)
