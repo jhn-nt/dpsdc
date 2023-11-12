@@ -419,7 +419,7 @@ class UnivariateAnalysis:
             .drop(["name", "fold"], axis=1)
             .apply(lambda x: combine_pvalues(x.astype(float)).pvalue)
         )
-        ecdf_tests["regression_fisher"] = regression_fisher
+        ecdf_tests["slope__fisher"] = regression_fisher
         return regression_df, ecdf_tests
 
 
