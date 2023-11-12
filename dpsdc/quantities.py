@@ -149,7 +149,7 @@ class UnivariateAnalysis:
     max_timestamp_variance__minutes: float = field(default=10, repr=True)
     min_timestamp_variance__minutes: float = field(default=0, repr=True)
     n_quantiles: int = 100
-    order: int = 1
+    order: int = 2
     n_splits: float = field(default=5, repr=True)
     n_repeats: float = field(default=10, repr=True)
     random_state: float = field(default=0, repr=True)
@@ -168,7 +168,9 @@ class UnivariateAnalysis:
 
         def aggregate(x, y):
             x_t, y_t = (
-                pd.DataFrame({"x": np.round(x, order), "y": y})
+                pd.DataFrame(
+                    {"x": np.floor(x * (10**order)) * (10**-order), "y": y}
+                )
                 .groupby("x")
                 .agg(aggfunc)
                 .reset_index()
@@ -189,6 +191,7 @@ class UnivariateAnalysis:
 
         scores = []
         traces = []
+        # Like this, we are sampling with 90%
         for fold, (train, _) in enumerate(cv.split(x, y)):
             x_q = np.squeeze(xmap.fit_transform(x[train].reshape(-1, 1)))
             y_q = np.squeeze(ymap.fit_transform(y[train].reshape(-1, 1)))
@@ -348,6 +351,7 @@ class UnivariateAnalysis:
         table["p"] = df.groupby("name").slope.agg(
             lambda x: ttest_1samp(x.astype(float), 0.0).pvalue
         )
+        table.index.name = "Timestamp Variance [Minutes]"
         return table, combine_pvalues(table.p).pvalue
 
     @staticmethod
@@ -420,6 +424,11 @@ class UnivariateAnalysis:
 
 
 @dataclass(frozen=True)
+class Results:
+    data: field(repr=False)
+
+
+@dataclass(frozen=True)
 class Regressor:
     """Base class implementing the minimum functionality of a regressor.
     This class is specifically tailored ot work with dpsdc data.
@@ -430,12 +439,15 @@ class Regressor:
     tracing_func: Callable = field(repr=False)
 
     @staticmethod
-    def make_processor(X, y, **kwargs):
+    def make_processor(X, y, random_state=0, **kwargs):
         categorical_processor = make_pipeline(
             SimpleImputer(strategy="most_frequent"), OneHotEncoder(drop="if_binary")
         )
         continuous_processor = make_pipeline(
-            SimpleImputer(), QuantileTransformer(output_distribution="normal")
+            SimpleImputer(),
+            QuantileTransformer(
+                output_distribution="normal", random_state=random_state
+            ),
         )
         processor = ColumnTransformer(
             [
@@ -472,8 +484,8 @@ class Regressor:
 
     @classmethod
     def build(cls, X, y, random_state=0, **kwargs):
-        processor = cls.make_processor(X, y, **kwargs)
-        regressor = cls.make_regressor(X, y, **kwargs)
+        processor = cls.make_processor(X, y, random_state=random_state, **kwargs)
+        regressor = cls.make_regressor(X, y, random_state=random_state, **kwargs)
         return cls(
             name=cls.name,
             estimator=Pipeline([("processor", processor), ("regressor", regressor)]),
@@ -490,7 +502,17 @@ class Regressor:
             name=self.name,
             progress_bar=False,
         )
-        return (*results, self.get_shap_values(X, y))
+        fi = pd.DataFrame(results[1])
+        qq = results[0]["curves"]["quantiles"]
+        sc = results[0]["statistics"]
+        return Results(
+            data={
+                "scores": sc,
+                "fi": fi,
+                "quantiles": qq,
+                "shap": self.get_shap_values(X, y),
+            }
+        )
 
 
 class RidgeReg(Regressor):
@@ -652,29 +674,40 @@ class MultivariateAnalysis:
 
     @staticmethod
     def plot_observed_predicted_quantiles(results):
-        qq_plots = results[1]
-
-        fig, ax = plt.subplots(figsize=(7, 7))
-        res = qq_plots.groupby(["name", "q"]).agg(["mean", "std"]).swaplevel(1, 0, 1)
-        for i, name in enumerate(res.index.get_level_values(0).unique()):
-            mn = _ = res.loc[name]["mean"]
-            sd = _ = res.loc[name]["std"]
-
-            _ = ax.plot(mn.q_true, mn.q_pred, label=name, color=cm.tab10(i))
-            _ = ax.fill_between(
-                mn.q_true,
-                mn.q_pred - sd.q_pred,
-                mn.q_pred + sd.q_pred,
-                color=cm.tab10(i),
-                alpha=0.3,
+        def plot_qq(qq_plots):
+            fig, ax = plt.subplots(figsize=(7, 7))
+            res = (
+                qq_plots.groupby(["name", "q"]).agg(["mean", "std"]).swaplevel(1, 0, 1)
             )
+            for i, name in enumerate(res.index.get_level_values(0).unique()):
+                mn = _ = res.loc[name]["mean"]
+                sd = _ = res.loc[name]["std"]
 
-        _ = ax.plot(mn.q_true, mn.q_true, color="k", alpha=0.7, zorder=-1)
-        _ = ax.legend()
-        _ = ax.grid(alpha=0.3)
-        _ = ax.set_ylabel("Predicted Quantile Value")
-        _ = ax.set_xlabel("True Quantile Value")
-        return fig
+                _ = ax.plot(mn.q_true, mn.q_pred, label=name, color=cm.tab10(i))
+                _ = ax.fill_between(
+                    mn.q_true,
+                    mn.q_pred - sd.q_pred,
+                    mn.q_pred + sd.q_pred,
+                    color=cm.tab10(i),
+                    alpha=0.3,
+                )
+
+            _ = ax.plot(mn.q_true, mn.q_true, color="k", alpha=0.7, zorder=-1)
+            _ = ax.legend()
+            _ = ax.grid(alpha=0.3)
+            _ = ax.set_ylabel("Predicted Quantile Value")
+            _ = ax.set_xlabel("True Quantile Value")
+            return fig
+
+        figures = {}
+        get_data = lambda f: f["data"].values[0].data
+        for ix, item in results.groupby(["model", "timestamp_variance"]):
+            try:
+                figures[f"{ix[0]}__{ix[1]}"] = plot_qq(get_data(item)["quantiles"])
+            except:
+                pass
+
+        return figures
 
     @staticmethod
     def plot_fi_boxplots(results):
@@ -688,26 +721,29 @@ class MultivariateAnalysis:
             fig.tight_layout()
             return fig
 
-        traces = results[2]
         figures = {}
-        for key, item in traces.items():
-            figures[key] = plot_fi(item)
+        get_data = lambda f: f["data"].values[0].data
+        for ix, item in results.groupby(["model", "timestamp_variance"]):
+            try:
+                figures[f"{ix[0]}__{ix[1]}"] = plot_fi(get_data(item)["fi"])
+            except:
+                pass
 
         return figures
 
     @staticmethod
-    def plot_shapvalues(results, timestamp_variance=5):
+    def plot_shapvalues(results):
         def plot_shap(shapval):
             fig, ax = plt.subplots()
-            plots.beeswarm(shapval[timestamp_variance], max_display=35)
+            plots.beeswarm(shapval, max_display=35)
             fig.tight_layout()
             return fig
 
-        shapvals = results[3]
         figures = {}
-        for key, item in shapvals.items():
+        get_data = lambda f: f["data"].values[0].data
+        for ix, item in results.groupby(["model", "timestamp_variance"]):
             try:
-                figures[key] = plot_shap(item)
+                figures[f"{ix[0]}__{ix[1]}"] = plot_shap(get_data(item)["shap"])
             except:
                 pass
 
@@ -730,9 +766,11 @@ class MultivariateAnalysis:
 
     @staticmethod
     def to_df(results):
+        get_data = lambda f: f["data"].values[0].data
+
         def format_scores(results, side):
             table = (
-                results[0]
+                get_data(results)["scores"]
                 .query(f"side=='{side}'")
                 .groupby("name")
                 .agg(["mean", "std"])
@@ -744,45 +782,63 @@ class MultivariateAnalysis:
             )
             return mean_table + std_table
 
-        def format_traces(model_trace, name):
+        def format_traces(results, name):
+            model_trace = get_data(results)["fi"]
             pval = lambda x: ttest_1samp(x, 0).pvalue
             table = model_trace.agg(["mean", "std"], axis=1).sort_values(
                 by="mean", ascending=False
             )
-            pvals = model_trace.apply(pval, axis=1).rename("p")
+            pvals = model_trace.apply(pval, axis=1).rename(name)
             mean_table = table["mean"].apply(lambda x: f"{x:.3f}")
             std_table = table["std"].apply(lambda x: f"  ({x:.3f})")
-            mean_and_std = (mean_table + std_table).rename(name)
-            return pd.concat([mean_and_std, pvals], axis=1)
+            mean_and_std_and_pvals = (
+                mean_table + std_table + pvals.apply(lambda x: f"   p={x:.3f}")
+            ).rename(name)
+            return mean_and_std_and_pvals, pvals
+
+        test_scores = []
+        train_scores = []
+        fi = []
+        pvals = []
+        for ix, item in results.groupby(["model", "timestamp_variance"]):
+            scores = format_scores(item, "test")
+            scores["variance"] = ix[1]
+            test_scores.append(scores.reset_index().set_index(["variance", "name"]))
+
+            scores = format_scores(item, "train")
+            scores["variance"] = ix[1]
+            train_scores.append(scores.reset_index().set_index(["variance", "name"]))
+
+            f, p = format_traces(item, ix)
+            fi.append(f)
+            pvals.append(p)
+
+        test_scores = pd.concat(test_scores, axis=0)
+        train_scores = pd.concat(train_scores, axis=0)
+        fi = pd.concat(fi, axis=1)
+        pvals = pd.concat(pvals, axis=1)
 
         fi_tables = {}
-        for key, items in results[2].items():
-            fi_tables[key] = format_traces(items, key)
+        for key in fi.columns.get_level_values(0).unique():
+            features = fi[key]
+            features["fisher"] = pvals.apply(
+                lambda x: f"{combine_pvalues(x).pvalue:.3f}"
+            )
+            fi_tables[key] = features
 
         return (
-            format_scores(results, "test"),
-            format_scores(results, "train"),
+            test_scores,
+            train_scores,
             fi_tables,
         )
 
     def run(self, X_y):
-        get_traces = lambda fi: pd.concat(
-            map(lambda x: pd.concat(x[1].values(), axis=1), fi), axis=1
-        )
-        get_scores = lambda score: pd.concat(
-            map(lambda x: x[0]["statistics"], score), axis=0
-        )
-        get_curves = lambda curve: pd.concat(
-            map(lambda x: x[0]["curves"]["quantiles"], curve), axis=0
-        )
-        get_shapvals = lambda shap: list(map(lambda x: x[-1], shap))
-
         X_y = self.remove_outliers_from_proxy(X_y)
 
         timestamp_variances_iterable = np.linspace(
             self.min_timestamp_variance__minutes,
             self.max_timestamp_variance__minutes,
-            self.n_variances,
+            self.n_variances + 1,
         )
         model_classes = self.get_models()
         cv = RepeatedKFold(
@@ -791,43 +847,20 @@ class MultivariateAnalysis:
             random_state=self.random_state,
         )
 
-        results = {}
         schedule = product(model_classes, timestamp_variances_iterable)
 
         def crossval(model_class, timestamp_var):
             data = self.add_variance_to_proxy(X_y, timestamp_var)
             X, y = self.split_X_and_y(data)
             model = model_class.build(X, y, random_state=self.random_state, cv=cv)
-            return (model_class.name, model.run(X, y, cv))
+            return (model_class.name, timestamp_var, model.run(X, y, cv))
 
-        raw_results = Parallel(n_jobs=self.n_jobs)(
+        crossvalidation_results = Parallel(n_jobs=self.n_jobs)(
             delayed(crossval)(*inputs) for inputs in schedule
         )
-        for key, item in raw_results:
-            if key in results:
-                results[key] += [item]
-            else:
-                results[key] = [item]
-
-        traces = []
-        scores = []
-        curves = []
-        shapvals = []
-
-        for key, items in results.items():
-            curves.append(get_curves(items))
-            scores.append(get_scores(items))
-            shapvals.append((key, get_shapvals(items)))
-
-            try:
-                traces.append((key, get_traces(items)))
-            except:
-                pass
-
-        curves = pd.concat(curves, axis=0)
-        scores = pd.concat(scores, axis=0)
-
-        return scores, curves, dict(traces), dict(shapvals)
+        return pd.DataFrame(
+            crossvalidation_results, columns=["model", "timestamp_variance", "data"]
+        )
 
 
 @dataclass(frozen=True)

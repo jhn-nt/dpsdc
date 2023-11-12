@@ -133,9 +133,7 @@ if __name__ == "__main__":
         dry=DRY_RUN,
     )
     results = experiment.run(X_y)
-    observed_predicted_quantiles_plot = experiment.plot_observed_predicted_quantiles(
-        results
-    )
+    qq_plots_per_model = experiment.plot_observed_predicted_quantiles(results)
     fi_plots_per_model = experiment.plot_fi_boxplots(results)
     shap_plots_per_model = experiment.plot_shapvalues(results)
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
@@ -162,34 +160,44 @@ if __name__ == "__main__":
     fisher_tests.to_excel(OUTPUT_PATH / "univariate_significance_tests.xlsx")
     test_scores.to_excel(OUTPUT_PATH / "test_scores.xlsx")
     train_scores.to_excel(OUTPUT_PATH / "train_scores.xlsx")
-    observed_predicted_quantiles_plot.savefig(
-        OUTPUT_PATH / "observed_predicted_quantiles_plot.png", dpi=500
-    )
     variance_effect_fig.savefig(OUTPUT_PATH / "variance_effect.png", dpi=500)
 
+    if not (OUTPUT_PATH / "qq_plots").is_dir():
+        os.mkdir(OUTPUT_PATH / "qq_plots")
+    for model_name, fig in qq_plots_per_model.items():
+        fig.savefig(OUTPUT_PATH / "qq_plots" / f"{model_name}.png", dpi=500)
+
+    if not (OUTPUT_PATH / "fi_tables").is_dir():
+        os.mkdir(OUTPUT_PATH / "fi_tables")
     for model_name, fi in fi_per_model.items():
-        fi.to_excel(OUTPUT_PATH / f"{model_name}.xlsx")
+        fi.to_excel(OUTPUT_PATH / "fi_tables" / f"{model_name}.xlsx")
 
+    if not (OUTPUT_PATH / "fi_plots").is_dir():
+        os.mkdir(OUTPUT_PATH / "fi_plots")
     for model_name, fig in fi_plots_per_model.items():
-        fig.savefig(OUTPUT_PATH / f"{model_name}_fi_plot.png", dpi=500)
+        fig.savefig(OUTPUT_PATH / "fi_plots" / f"{model_name}_fi_plot.png", dpi=500)
 
+    if not (OUTPUT_PATH / "shap").is_dir():
+        os.mkdir(OUTPUT_PATH / "shap")
     for model_name, fig in shap_plots_per_model.items():
-        fig.savefig(OUTPUT_PATH / f"{model_name}_shap_plot.png", dpi=500)
+        fig.savefig(OUTPUT_PATH / "shap" / f"{model_name}_shap_plot.png", dpi=500)
 
+    if not (OUTPUT_PATH / "boxplots").is_dir():
+        os.mkdir(OUTPUT_PATH / "boxplots")
     for disparity_name, fig in boxplots_per_disparity.items():
-        fig.savefig(OUTPUT_PATH / f"{disparity_name}_boxplot.png", dpi=500)
+        fig.savefig(OUTPUT_PATH / "boxplots" / f"{disparity_name}_boxplot.png", dpi=500)
 
+    if not (OUTPUT_PATH / "trends").is_dir():
+        os.mkdir(OUTPUT_PATH / "trends")
     for disparity_name, fig in trends_per_disparity.items():
-        fig.savefig(OUTPUT_PATH / f"{disparity_name}_trend.png", dpi=500)
+        fig.savefig(OUTPUT_PATH / "trends" / f"{disparity_name}_trend.png", dpi=500)
 
-    if ~(OUTPUT_PATH / "regression_plots").is_dir():
+    if not (OUTPUT_PATH / "regression_plots").is_dir():
         os.mkdir(OUTPUT_PATH / "regression_plots")
-
     for variance, fig in regression_plots.items():
         fig.savefig(OUTPUT_PATH / "regression_plots" / f"{variance}.png", dpi=500)
 
-    if ~(OUTPUT_PATH / "ecdf_plots").is_dir():
+    if not (OUTPUT_PATH / "ecdf_plots").is_dir():
         os.mkdir(OUTPUT_PATH / "ecdf_plots")
-
     for variance, fig in ecdf_plots.items():
         fig.savefig(OUTPUT_PATH / "ecdf_plots" / f"{variance}.png", dpi=500)

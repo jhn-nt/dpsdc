@@ -33,9 +33,7 @@ class SetupTest(unittest.TestCase):
         )
 
         results = experiment.run(X_y)
-        observed_predicted_quantiles_plot = (
-            experiment.plot_observed_predicted_quantiles(results)
-        )
+        qq_plots_per_model = experiment.plot_observed_predicted_quantiles(results)
         fi_plots_per_model = experiment.plot_fi_boxplots(results)
         shap_plots_per_model = experiment.plot_shapvalues(results)
         test_scores, train_scores, fi_per_model = experiment.to_df(results)
