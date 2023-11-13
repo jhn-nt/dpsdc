@@ -470,10 +470,6 @@ class Regressor:
         raise NotImplementedError("Subclass this method")
 
     @staticmethod
-    def tracing_func(model):
-        raise NotImplementedError("Subclass this method")
-
-    @staticmethod
     def shap_explainer(model, X):
         raise NotImplementedError("Subclass this method")
 
@@ -510,17 +506,17 @@ class Regressor:
             name=self.name,
             progress_bar=False,
         )
-        fi = pd.DataFrame(results[1])
-        qq = results[0]["curves"]["quantiles"]
-        sc = results[0]["statistics"]
-        return Results(
-            data={
-                "scores": sc,
-                "fi": fi,
-                "quantiles": qq,
-                "shap": self.get_shap_values(X, y),
-            }
-        )
+
+        data = {
+            "scores": results[0]["statistics"],
+            "quantiles": results[0]["curves"]["quantiles"],
+            "shap": self.get_shap_values(X, y),
+        }
+
+        if self.tracing_func is not None:
+            data["fi"] = pd.DataFrame(results[1])
+
+        return Results(data=data)
 
 
 class RidgeReg(Regressor):
@@ -636,14 +632,11 @@ class MedianReg(Regressor):
     """Implementation of a Median Baseline."""
 
     name = "Median"
+    tracing_func = None
 
     @staticmethod
     def make_regressor(X, y, random_state=0, **kwargs):
         return DummyRegressor(strategy="median")
-
-    @staticmethod
-    def tracing_func(model):
-        pass
 
     @staticmethod
     def shap_explainer(model, X):
@@ -710,10 +703,7 @@ class MultivariateAnalysis:
         figures = {}
         get_data = lambda f: f["data"].values[0].data
         for ix, item in results.groupby(["model", "timestamp_variance"]):
-            try:
-                figures[f"{ix[0]}__{ix[1]}"] = plot_qq(get_data(item)["quantiles"])
-            except:
-                pass
+            figures[f"{ix[0]}__{ix[1]}"] = plot_qq(get_data(item)["quantiles"])
 
         return figures
 
@@ -732,10 +722,8 @@ class MultivariateAnalysis:
         figures = {}
         get_data = lambda f: f["data"].values[0].data
         for ix, item in results.groupby(["model", "timestamp_variance"]):
-            try:
+            if "fi" in get_data(item):
                 figures[f"{ix[0]}__{ix[1]}"] = plot_fi(get_data(item)["fi"])
-            except:
-                pass
 
         return figures
 
@@ -750,18 +738,14 @@ class MultivariateAnalysis:
         figures = {}
         get_data = lambda f: f["data"].values[0].data
         for ix, item in results.groupby(["model", "timestamp_variance"]):
-            try:
+            if get_data(item)["shap"] is not None:
                 figures[f"{ix[0]}__{ix[1]}"] = plot_shap(get_data(item)["shap"])
-            except:
-                pass
 
         return figures
 
     def get_models(self):
         if self.dry:
-            model_list = [
-                RidgeReg,
-            ]
+            model_list = [RidgeReg, MedianReg]
         else:
             model_list = [
                 LGBMReg,
@@ -817,9 +801,10 @@ class MultivariateAnalysis:
             scores["variance"] = ix[1]
             train_scores.append(scores.reset_index().set_index(["variance", "name"]))
 
-            f, p = format_traces(item, ix)
-            fi.append(f)
-            pvals.append(p)
+            if "fi" in get_data(item):
+                f, p = format_traces(item, ix)
+                fi.append(f)
+                pvals.append(p)
 
         test_scores = pd.concat(test_scores, axis=0)
         train_scores = pd.concat(train_scores, axis=0)
