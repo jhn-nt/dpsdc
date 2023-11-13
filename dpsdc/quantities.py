@@ -163,6 +163,12 @@ class UnivariateAnalysis:
 
     @staticmethod
     def crossvalidate_experiment(x, y, cv, order, aggfunc, random_state, name):
+        def remove_outliers(x, y):
+            x_y = np.stack((np.squeeze(x), np.squeeze(y)))
+            z_score = np.abs((y - y.mean()) / y.std())
+            x_y = x_y[:, z_score < 3]
+            return x_y[0], x_y[1]
+
         xmap = QuantileTransformer(random_state=random_state)
         ymap = QuantileTransformer(random_state=random_state)
 
@@ -195,18 +201,20 @@ class UnivariateAnalysis:
         for fold, (train, _) in enumerate(cv.split(x, y)):
             x_q = np.squeeze(xmap.fit_transform(x[train].reshape(-1, 1)))
             y_q = np.squeeze(ymap.fit_transform(y[train].reshape(-1, 1)))
+
             x_q_agg, y_q_agg = aggregate(x_q, y_q)
+            x_q_agg_filtered, y_q_agg_filtered = remove_outliers(x_q_agg, y_q_agg)
 
-            coef = np.polyfit(x_q_agg, y_q_agg, deg=1)
-            y_q_agg_pred = np.polyval(coef, x_q_agg)
+            coef = np.polyfit(x_q_agg_filtered, y_q_agg_filtered, deg=1)
+            y_q_agg_pred = np.polyval(coef, x_q_agg_filtered)
 
-            scores.append(score_f(y_q_agg, y_q_agg_pred, fold, coef))
+            scores.append(score_f(y_q_agg_filtered, y_q_agg_pred, fold, coef))
             traces.append(
                 pd.DataFrame(
                     {
                         "x": x_q_agg,
                         "y_true": y_q_agg,
-                        "y_pred": y_q_agg_pred,
+                        "y_pred": np.polyval(coef, x_q_agg),
                         "name": name,
                         "fold": fold,
                     }
