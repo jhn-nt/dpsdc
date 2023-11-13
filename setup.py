@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="dpsdc",
-    version="0.3",
+    version="0.4",
     description="Disparity Proxies and Social Determinants of Care",
     author="A. Carrel, G. Angelotti, L.L. Weishaupt, L.M. Hampton, N. Dundas, P. Morandini, J. Byers, J. Gallifant, L.A. Celi",
     packages=["dpsdc"],
