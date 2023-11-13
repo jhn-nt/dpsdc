@@ -828,9 +828,9 @@ class MultivariateAnalysis:
 
         fi_tables = {}
         for key in fi.columns.get_level_values(0).unique():
-            features = fi[key]
+            features = fi[key].copy()
             features["fisher"] = pvals.apply(
-                lambda x: f"{combine_pvalues(x).pvalue:.3f}"
+                lambda x: f"{combine_pvalues(x).pvalue:.3f}", axis=1
             )
             fi_tables[key] = features
 
