@@ -163,15 +163,6 @@ class UnivariateAnalysis:
 
     @staticmethod
     def crossvalidate_experiment(x, y, cv, order, aggfunc, random_state, name):
-        def remove_outliers(x, y):
-            x_y = np.stack((np.squeeze(x), np.squeeze(y)))
-            z_score = np.abs((y - y.mean()) / y.std())
-            x_y = x_y[:, z_score < 3]
-            return x_y[0], x_y[1]
-
-        xmap = QuantileTransformer(random_state=random_state)
-        ymap = QuantileTransformer(random_state=random_state)
-
         def aggregate(x, y):
             x_t, y_t = (
                 pd.DataFrame(
@@ -184,10 +175,28 @@ class UnivariateAnalysis:
             )
             return x_t, y_t
 
+        def remove_outliers(x, y, z_score_f):
+            x_y = np.stack((np.squeeze(x), np.squeeze(y)))
+            x_y = x_y[:, z_score_f(y) < 3]
+            return x_y[0], x_y[1]
+
+        def fit(x, y):
+            z_score_f = lambda serie: (serie - y.mean()) / y.std()
+            xmap = QuantileTransformer(random_state=random_state).fit(x.reshape(-1, 1))
+            ymap = QuantileTransformer(random_state=random_state).fit(y.reshape(-1, 1))
+
+            def transform(xi, yi):
+                x_q = np.squeeze(xmap.transform(xi.reshape(-1, 1)))
+                y_q = np.squeeze(ymap.transform(yi.reshape(-1, 1)))
+                x_q, y_q = aggregate(x_q, y_q)
+                return x_q, y_q
+
+            coef = np.polyfit(*remove_outliers(*transform(x, y), z_score_f), deg=1)
+            return coef, transform
+
         score_f = lambda y, y_pred, fold, coef: pd.Series(
             {
-                "r2": r2_score(np.squeeze(y), y_pred),
-                # "mse":mean_squared_error(np.squeeze(y),y_pred),
+                "r2": r2_score(np.squeeze(y), np.squeeze(y_pred)),
                 "fold": fold,
                 "name": name,
                 "slope": coef[0],
@@ -198,23 +207,18 @@ class UnivariateAnalysis:
         scores = []
         traces = []
         # Like this, we are sampling with 90%
-        for fold, (train, _) in enumerate(cv.split(x, y)):
-            x_q = np.squeeze(xmap.fit_transform(x[train].reshape(-1, 1)))
-            y_q = np.squeeze(ymap.fit_transform(y[train].reshape(-1, 1)))
+        for fold, (train, test) in enumerate(cv.split(x, y)):
+            coef, transform = fit(x[train], y[train])
+            x_q, y_q = transform(x[test], y[test])
+            y_q_pred = np.polyval(coef, x_q)
 
-            x_q_agg, y_q_agg = aggregate(x_q, y_q)
-            x_q_agg_filtered, y_q_agg_filtered = remove_outliers(x_q_agg, y_q_agg)
-
-            coef = np.polyfit(x_q_agg_filtered, y_q_agg_filtered, deg=1)
-            y_q_agg_pred = np.polyval(coef, x_q_agg_filtered)
-
-            scores.append(score_f(y_q_agg_filtered, y_q_agg_pred, fold, coef))
+            scores.append(score_f(y_q, y_q_pred, fold, coef))
             traces.append(
                 pd.DataFrame(
                     {
-                        "x": x_q_agg,
-                        "y_true": y_q_agg,
-                        "y_pred": np.polyval(coef, x_q_agg),
+                        "x": x_q,
+                        "y_true": y_q,
+                        "y_pred": y_q_pred,
                         "name": name,
                         "fold": fold,
                     }
