@@ -1,6 +1,5 @@
 # Adherence to Frequency of Turnings Protocol in Mechanically Ventilated Patients in MIMIC-IV
-## 
-
+###
 
 
 
@@ -11,12 +10,12 @@
 __Important Note__: The google account enabled to access the MIMIC-IV must the be _same_ as the one associated with the Google Project.  
 
 ### Installation
-1. run `pip install "git+https://github.com/jhn-nt/dpsdc.git@turnings"`  
+1. run `pip install "git+https://github.com/jhn-nt/dpsdc.git"`  
 2. to test the installation, run `python3 -m unittest dpsdc.tests` 
 
 ### Run the experiment
-2. for a light run try: `python3 -m dpsdc -p <your project-id> --dry` 
-1. to run  the whole experiment: `python3 -m dpsdc -p <your project-id>` 
+2. dry run, completed in a couple of minutes: `python3 -m dpsdc -p <your project-id> --dry` 
+1. to run  the whole experiment (ca 2 hours), use: `python3 -m dpsdc -p <your project-id>` 
 
 
 

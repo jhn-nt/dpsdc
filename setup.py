@@ -4,8 +4,8 @@ from setuptools import setup
 setup(
     name="dpsdc",
     version="0.9",
-    description="Disparity Proxies and Social Determinants of Care",
-    author="A. Carrel, G. Angelotti, L.L. Weishaupt, L.M. Hampton, N. Dundas, P. Morandini, J. Byers, J. Gallifant, L.A. Celi",
+    description="TBD",
+    author="TBD A. Carrel, G. Angelotti, L.L. Weishaupt, L.M. Hampton, N. Dundas, P. Morandini, J. Byers, J. Gallifant, L.A. Celi",
     packages=["dpsdc"],
     include_package_data=True,
     python_requires="==3.10.13",
