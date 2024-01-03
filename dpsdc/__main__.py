@@ -25,6 +25,8 @@ from .loaders import (
 from .quantities import UnivariateAnalysis, MultivariateAnalysis, ExploatoryAnalysis
 from .utils import categorical, continuous
 
+import pydata_google_auth
+
 
 parser = ArgumentParser()
 parser.add_argument("-d", "--dir", action="store", default="./output")
@@ -76,14 +78,22 @@ if not OUTPUT_PATH.is_dir():
 
 def download():
     if not DATA_PATH.is_dir():
+        print('yay')
         os.mkdir(DATA_PATH)
         cohort_criteria = open(COHORT_PATH, "r").read()
         proxy_query = open(PROXY_PATH, "r").read()
 
         template_query = open(PROCEDURES_PATH / "cohort.sql", "r").read()
         query = template_query.format(cohort_criteria)
-        pd.read_gbq(query, project_id=PROJECT_ID).to_pickle(DATA_PATH / "cohort.pkl")
-        pd.read_gbq(proxy_query, project_id=PROJECT_ID).to_pickle(
+        
+        os.environ['GOOGLE_CLOUD_PROJECT'] = PROJECT_ID
+        credentials = pydata_google_auth.get_user_credentials(
+            ['https://www.googleapis.com/auth/bigquery'],
+            use_local_webserver=False
+        )
+        
+        pd.read_gbq(query, project_id=PROJECT_ID, credentials=credentials).to_pickle(DATA_PATH / "cohort.pkl")
+        pd.read_gbq(proxy_query, project_id=PROJECT_ID, credentials=credentials).to_pickle(
             DATA_PATH / "proxy.pkl"
         )
 
@@ -92,9 +102,11 @@ def download():
             pbar.set_postfix({"procedure": procedure.name})
             template_query = open(procedure, "r").read()
             query = template_query.format(cohort_criteria)
-            pd.read_gbq(query, project_id=PROJECT_ID).to_pickle(
+            pd.read_gbq(query, project_id=PROJECT_ID, credentials=credentials).to_pickle(
                 DATA_PATH / f"{procedure.name.split('.sql')[0]}.pkl"
             )
+    else:
+        print('nay')
 
 
 if __name__ == "__main__":
@@ -109,9 +121,9 @@ if __name__ == "__main__":
     disparity_axis_df = load_disparity_axis(DATA_PATH)
     proxies_df = load_proxy(DATA_PATH)
     experiment = UnivariateAnalysis(
-        proxy_name="Turning",
-        disparities_axis_name="Weight",
-        disparities_axis_uom="Kg(s)",
+        proxy_name="Mouthcare_Procedures",
+        disparities_axis_name="Procedures",
+        disparities_axis_uom="#",
         protocol__hours=2,
     )
 
@@ -120,16 +132,16 @@ if __name__ == "__main__":
     ecdf_plots = experiment.plot_ecdf_by_variance(scores)
     regression_table, fisher_tests = experiment.to_df(scores)
 
-    # 4. Quantile regression to adjust for confounders
+    # # 4. Quantile regression to adjust for confounders
     baseline_df = load_baselines(DATA_PATH)
     disparity_axis_df = load_disparity_axis(DATA_PATH)
     proxies_df = load_proxy(DATA_PATH)
     X_y = pd.concat([baseline_df, disparity_axis_df, proxies_df], axis=1)
 
     experiment = MultivariateAnalysis(
-        proxy_name="Turning",
-        disparities_axis_name="Weight",
-        disparities_axis_uom="Kg(s)",
+        proxy_name="Mouthcare_Procedures",
+        disparities_axis_name="Procedures",
+        disparities_axis_uom="#",
         dry=DRY_RUN,
     )
     results = experiment.run(X_y)
@@ -138,12 +150,12 @@ if __name__ == "__main__":
     shap_plots_per_model = experiment.plot_shapvalues(results)
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
 
-    # 5. Descriptive plots
+    # # 5. Descriptive plots
     time_series_df = load_proxy_time_series(DATA_PATH)
     experiment = ExploatoryAnalysis(
-        proxy_name="Turning",
-        disparities_axis_name="Weight",
-        disparities_axis_uom="Kg(s)",
+        proxy_name="Mouthcare_Procedures",
+        disparities_axis_name="Procedures",
+        disparities_axis_uom="#",
         protocol__hours=2,
     )
     boxplots_per_disparity = experiment.boxplot_by_features(
@@ -154,7 +166,7 @@ if __name__ == "__main__":
     )
     variance_effect_fig = experiment.plot_timestamp_variance_effect(proxies_df.proxy)
 
-    # 6. Saving Results
+    # # 6. Saving Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
     regression_table.to_excel(OUTPUT_PATH / "univariate_regression_results.xlsx")
     fisher_tests.to_excel(OUTPUT_PATH / "univariate_significance_tests.xlsx")
