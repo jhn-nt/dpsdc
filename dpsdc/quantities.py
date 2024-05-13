@@ -3,6 +3,7 @@ import json
 
 from dataclasses import dataclass, field, fields
 from itertools import product
+from warnings import warn
 
 from shap import LinearExplainer, TreeExplainer, plots
 
@@ -165,9 +166,7 @@ class UnivariateAnalysis:
     def crossvalidate_experiment(x, y, cv, order, aggfunc, random_state, name):
         def aggregate(x, y):
             x_t, y_t = (
-                pd.DataFrame(
-                    {"x": np.floor(x * (10**order)) * (10**-order), "y": y}
-                )
+                pd.DataFrame({"x": np.floor(x * (10**order)) * (10**-order), "y": y})
                 .groupby("x")
                 .agg(aggfunc)
                 .reset_index()
@@ -500,11 +499,14 @@ class Regressor:
             tracing_func=cls.tracing_func,
         )
 
+    # TODO: Scores here need to be computed differently
+    # scores should be computed using the average of the quantile of prediction
+    # against the average of the true qunatile
     def run(self, X, y, cv):
         results = crossvalidate_regression(
             self.estimator,
             X,
-            y,
+            y,  # should be using
             cv=cv,
             tracing_func=self.tracing_func,
             name=self.name,
@@ -599,7 +601,8 @@ class LGBMReg(Regressor):
 
     @staticmethod
     def shap_explainer(model, X):
-        return TreeExplainer(model.best_estimator_, X)(X)
+        warn("Additivity check for trees is set to False")
+        return TreeExplainer(model.best_estimator_, X)(X, check_additivity=False)
 
 
 class QuantileLGBMReg(Regressor):
@@ -629,7 +632,10 @@ class QuantileLGBMReg(Regressor):
 
     @staticmethod
     def shap_explainer(model, X):
-        return TreeExplainer(model.best_estimator_.regressor_, X)(X)
+        warn("Additivity check for trees is set to False")
+        return TreeExplainer(model.best_estimator_.regressor_, X)(
+            X, check_additivity=False
+        )
 
 
 class MedianReg(Regressor):
