@@ -337,6 +337,8 @@ class UnivariateAnalysis:
         names = crossval_results.columns.to_list()
         legend = "\n".join([f"{t}: {v}" for (t, v) in zip(names, vals)])
 
+        
+
         fig, ax = plt.subplots()
         _ = ax.scatter(x, y_true)
         _ = ax.plot(x, y_pred, color="k", label=legend)
@@ -363,7 +365,9 @@ class UnivariateAnalysis:
             lambda x: ttest_1samp(x.astype(float), 0.0).pvalue
         )
         table.index.name = "Timestamp Variance [Minutes]"
-        return table, combine_pvalues(table.p).pvalue
+        combined_pval=combine_pvalues(table.p).pvalue
+        table.p=table.p.apply(lambda p: f"{p:.4f}" if p>1e-4 else "<<.05")
+        return table,  combined_pval
 
     @staticmethod
     def format_table(df):
@@ -388,7 +392,7 @@ class UnivariateAnalysis:
         def print_pval(ix):
             ps = results[3].query(ix)["two-sided"].astype(float).values
             pval = combine_pvalues(ps).pvalue
-            return f"p:{pval:.4f}"
+            return f"p:{pval:.4f}" if pval >1e-4 else "p:<<.05"
 
         output = {}
         for ix, group in results[2].groupby("name")[
@@ -858,9 +862,15 @@ class MultivariateAnalysis:
             model = model_class.build(X, y, random_state=self.random_state, cv=cv)
             return (model_class.name, timestamp_var, model.run(X, y, cv))
 
-        crossvalidation_results = Parallel(n_jobs=self.n_jobs)(
-            delayed(crossval)(*inputs) for inputs in schedule
-        )
+        
+        #crossvalidation_results = Parallel(n_jobs=self.n_jobs)(
+        #    delayed(crossval)(*inputs) for inputs in schedule
+        #)
+        from tqdm import tqdm
+        crossvalidation_results=[]
+        for inputs in tqdm(schedule):
+            crossvalidation_results.append(crossval(*inputs))
+
         return pd.DataFrame(
             crossvalidation_results, columns=["model", "timestamp_variance", "data"]
         )

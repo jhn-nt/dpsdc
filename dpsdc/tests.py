@@ -3,6 +3,9 @@ from .quantities import UnivariateAnalysis, MultivariateAnalysis, ExploatoryAnal
 import numpy as np
 import pandas as pd
 
+import matplotlib
+matplotlib.use('Agg')
+
 
 class SetupTest(unittest.TestCase):
     def test_univariate_analysis(self):

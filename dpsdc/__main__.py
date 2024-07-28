@@ -98,12 +98,16 @@ def download():
 
 
 if __name__ == "__main__":
+    import matplotlib
+    matplotlib.use('Agg')
     # 1. Downloading the data from BigQuery, if not already available
     download()
+    print("1. Data Downloaded")
 
     # 2. Building Table One
     df = load_table_one(DATA_PATH)
     table_one = TableOne(df, categorical=categorical(df), groupby="proxy", pval=True)
+    print("2. Table One Created")
 
     # 3. Computing Quantile Maps with a high resolution (100pts) for plots and stats
     disparity_axis_df = load_disparity_axis(DATA_PATH)
@@ -114,11 +118,13 @@ if __name__ == "__main__":
         disparities_axis_uom="Kg(s)",
         protocol__hours=2,
     )
+    
 
     scores = experiment.run(disparity_axis_df.weight.values, proxies_df.proxy.values)
     regression_plots = experiment.plot_regression_by_variance(scores)
     ecdf_plots = experiment.plot_ecdf_by_variance(scores)
     regression_table, fisher_tests = experiment.to_df(scores)
+    print("3. Univariate Analysis Concluded")
 
     # 4. Quantile regression to adjust for confounders
     baseline_df = load_baselines(DATA_PATH)
@@ -137,6 +143,7 @@ if __name__ == "__main__":
     fi_plots_per_model = experiment.plot_fi_boxplots(results)
     shap_plots_per_model = experiment.plot_shapvalues(results)
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
+    print("4. Multivariate Analysis Concluded")
 
     # 5. Descriptive plots
     time_series_df = load_proxy_time_series(DATA_PATH)
@@ -153,6 +160,7 @@ if __name__ == "__main__":
         time_series_df, disparity_axis_df
     )
     variance_effect_fig = experiment.plot_timestamp_variance_effect(proxies_df.proxy)
+    print("5. Plotting")
 
     # 6. Saving Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
@@ -166,6 +174,7 @@ if __name__ == "__main__":
         os.mkdir(OUTPUT_PATH / "qq_plots")
     for model_name, fig in qq_plots_per_model.items():
         fig.savefig(OUTPUT_PATH / "qq_plots" / f"{model_name}.png", dpi=500)
+
 
     if not (OUTPUT_PATH / "fi_tables").is_dir():
         os.mkdir(OUTPUT_PATH / "fi_tables")
@@ -201,3 +210,6 @@ if __name__ == "__main__":
         os.mkdir(OUTPUT_PATH / "ecdf_plots")
     for variance, fig in ecdf_plots.items():
         fig.savefig(OUTPUT_PATH / "ecdf_plots" / f"{variance}.png", dpi=500)
+    print("6. Done")
+
+
