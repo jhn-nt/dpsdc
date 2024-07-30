@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('agg')
 
 
 class SetupTest(unittest.TestCase):

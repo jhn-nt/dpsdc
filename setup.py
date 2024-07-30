@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
     name="dpsdc",
-    version="0.13.2",
+    version="0.14",
     description="TBD",
     author="TBD A. Carrel, G. Angelotti, L.L. Weishaupt, L.M. Hampton, N. Dundas, P. Morandini, J. Byers, J. Gallifant, L.A. Celi",
     packages=["dpsdc"],

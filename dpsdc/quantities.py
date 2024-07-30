@@ -33,6 +33,8 @@ from .utils import categorical, continuous
 
 from scipy.stats import ttest_ind
 
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
@@ -386,7 +388,7 @@ class UnivariateAnalysis:
                 density, mn - 1.96 * sd, mn + 1.96 * sd, color=color, alpha=0.3
             )
             _ = ax.set_ylabel("F [AU]")
-            _ = ax.set_xlabel(f"Average {self.proxy_name} Interval [Hoour(s)]")
+            _ = ax.set_xlabel(f"Average {self.proxy_name} Interval [Hour(s)]")
             return ax
 
         def print_pval(ix):

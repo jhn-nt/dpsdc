@@ -2,14 +2,22 @@ from pathlib import Path
 from appdata import AppDataPaths
 import json
 import os
+import gc
 from tqdm import tqdm
 
 
 import pandas as pd
 import numpy as np
 
+
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('agg')
+
+
 from itertools import product
 from dataclasses import dataclass, replace
+import tracemalloc
 from argparse import ArgumentParser
 
 from tableone import TableOne
@@ -41,6 +49,14 @@ parser.add_argument(
     action="store",
     default=f"{str(Path(__file__).parent)}/experiments/turnings/proxy.sql",
 )
+
+parser.add_argument(
+    "-i",
+    "--info",
+    action="store",
+    default=f"{str(Path(__file__).parent)}/experiments/turnings/info.json",
+)
+
 parser.add_argument("--dry", action="store_true")
 args = parser.parse_args()
 
@@ -51,6 +67,8 @@ APP_PATH.setup()
 OUTPUT_PATH = Path(args.dir)  # Output directory for figures and tables
 COHORT_PATH = Path(args.cohort)  # Path to the .sql file defining the cohort
 PROXY_PATH = Path(args.proxy)  # Path to the .sql file defining the proxy
+INFO=json.load(open(Path(args.info))) # Path to .info fpo the proxies, such as axis name
+
 PROCEDURES_PATH = (
     Path(__file__).parent / "procedures"
 )  # Path to dpsdc template procedures
@@ -73,6 +91,17 @@ if DRY_RUN:
 if not OUTPUT_PATH.is_dir():
     os.mkdir(OUTPUT_PATH)
 
+def plot_task(target_dir:str,plots:dict,dpi:int=500):
+    """Helper to store plots to try to avoid memory leaks.
+    Apparently, there seems to be a memory leak connected to savefig, that slowly fills RAM
+    despite closing and clearing figures, see: https://github.com/matplotlib/matplotlib/issues/27138
+    """
+    if not (OUTPUT_PATH / target_dir).is_dir():
+        os.mkdir(OUTPUT_PATH / target_dir)
+    for model_name, fig in plots.items():
+        fig.savefig(OUTPUT_PATH / target_dir / f"{model_name}.png", dpi=dpi)
+        plt.close(fig)
+    gc.collect()
 
 def download():
     if not DATA_PATH.is_dir():
@@ -97,9 +126,11 @@ def download():
             )
 
 
+    
+
+
+
 if __name__ == "__main__":
-    import matplotlib
-    matplotlib.use('Agg')
     # 1. Downloading the data from BigQuery, if not already available
     download()
     print("1. Data Downloaded")
@@ -113,18 +144,27 @@ if __name__ == "__main__":
     disparity_axis_df = load_disparity_axis(DATA_PATH)
     proxies_df = load_proxy(DATA_PATH)
     experiment = UnivariateAnalysis(
-        proxy_name="Turning",
-        disparities_axis_name="Weight",
-        disparities_axis_uom="Kg(s)",
+        proxy_name=INFO["proxy_name"],
+        disparities_axis_name=INFO["disparities_axis_name"],
+        disparities_axis_uom=INFO["disparities_axis_uom"],
         protocol__hours=2,
     )
     
 
-    scores = experiment.run(disparity_axis_df.weight.values, proxies_df.proxy.values)
+    scores = experiment.run(disparity_axis_df[INFO["disparities_axis_name"].lower()].values, proxies_df.proxy.values)
     regression_plots = experiment.plot_regression_by_variance(scores)
+    plot_task("regression_plots",regression_plots)
+    del regression_plots 
+    gc.collect()
+
     ecdf_plots = experiment.plot_ecdf_by_variance(scores)
+    plot_task("ecdf_plots",ecdf_plots)
+    del ecdf_plots
+    gc.collect()
+
     regression_table, fisher_tests = experiment.to_df(scores)
     print("3. Univariate Analysis Concluded")
+    
 
     # 4. Quantile regression to adjust for confounders
     baseline_df = load_baselines(DATA_PATH)
@@ -133,83 +173,74 @@ if __name__ == "__main__":
     X_y = pd.concat([baseline_df, disparity_axis_df, proxies_df], axis=1)
 
     experiment = MultivariateAnalysis(
-        proxy_name="Turning",
-        disparities_axis_name="Weight",
-        disparities_axis_uom="Kg(s)",
+        proxy_name=INFO["proxy_name"],
+        disparities_axis_name=INFO["disparities_axis_name"],
+        disparities_axis_uom=INFO["disparities_axis_uom"],
         dry=DRY_RUN,
     )
     results = experiment.run(X_y)
     qq_plots_per_model = experiment.plot_observed_predicted_quantiles(results)
+    plot_task("qq_plots",qq_plots_per_model)
+    del qq_plots_per_model
+    gc.collect()
+
     fi_plots_per_model = experiment.plot_fi_boxplots(results)
+    plot_task("fi_plots",fi_plots_per_model)
+    del fi_plots_per_model
+    gc.collect()
+
     shap_plots_per_model = experiment.plot_shapvalues(results)
+    plot_task("shap",shap_plots_per_model)
+    del shap_plots_per_model
+    gc.collect()
+
     test_scores, train_scores, fi_per_model = experiment.to_df(results)
     print("4. Multivariate Analysis Concluded")
 
     # 5. Descriptive plots
     time_series_df = load_proxy_time_series(DATA_PATH)
     experiment = ExploatoryAnalysis(
-        proxy_name="Turning",
-        disparities_axis_name="Weight",
-        disparities_axis_uom="Kg(s)",
+        proxy_name=INFO["proxy_name"],
+        disparities_axis_name=INFO["disparities_axis_name"],
+        disparities_axis_uom=INFO["disparities_axis_uom"],
         protocol__hours=2,
     )
     boxplots_per_disparity = experiment.boxplot_by_features(
         proxies_df.proxy, disparity_axis_df
     )
+    plot_task("boxplots",boxplots_per_disparity)
+    del boxplots_per_disparity
+    gc.collect()
+
     trends_per_disparity = experiment.plot_daily_trends(
         time_series_df, disparity_axis_df
     )
+    plot_task("trends",trends_per_disparity)
+    del trends_per_disparity
+    gc.collect()
+
     variance_effect_fig = experiment.plot_timestamp_variance_effect(proxies_df.proxy)
+
     print("5. Plotting")
 
-    # 6. Saving Results
+    # 6. Saving Tabular Results
     table_one.to_excel(OUTPUT_PATH / "table_one.xlsx")
     regression_table.to_excel(OUTPUT_PATH / "univariate_regression_results.xlsx")
     fisher_tests.to_excel(OUTPUT_PATH / "univariate_significance_tests.xlsx")
     test_scores.to_excel(OUTPUT_PATH / "test_scores.xlsx")
     train_scores.to_excel(OUTPUT_PATH / "train_scores.xlsx")
     variance_effect_fig.savefig(OUTPUT_PATH / "variance_effect.png", dpi=500)
+    plt.close(variance_effect_fig)
 
-    if not (OUTPUT_PATH / "qq_plots").is_dir():
-        os.mkdir(OUTPUT_PATH / "qq_plots")
-    for model_name, fig in qq_plots_per_model.items():
-        fig.savefig(OUTPUT_PATH / "qq_plots" / f"{model_name}.png", dpi=500)
+
 
 
     if not (OUTPUT_PATH / "fi_tables").is_dir():
         os.mkdir(OUTPUT_PATH / "fi_tables")
     for model_name, fi in fi_per_model.items():
         fi.to_excel(OUTPUT_PATH / "fi_tables" / f"{model_name}.xlsx")
+        
 
-    if not (OUTPUT_PATH / "fi_plots").is_dir():
-        os.mkdir(OUTPUT_PATH / "fi_plots")
-    for model_name, fig in fi_plots_per_model.items():
-        fig.savefig(OUTPUT_PATH / "fi_plots" / f"{model_name}_fi_plot.png", dpi=500)
 
-    if not (OUTPUT_PATH / "shap").is_dir():
-        os.mkdir(OUTPUT_PATH / "shap")
-    for model_name, fig in shap_plots_per_model.items():
-        fig.savefig(OUTPUT_PATH / "shap" / f"{model_name}_shap_plot.png", dpi=500)
-
-    if not (OUTPUT_PATH / "boxplots").is_dir():
-        os.mkdir(OUTPUT_PATH / "boxplots")
-    for disparity_name, fig in boxplots_per_disparity.items():
-        fig.savefig(OUTPUT_PATH / "boxplots" / f"{disparity_name}_boxplot.png", dpi=500)
-
-    if not (OUTPUT_PATH / "trends").is_dir():
-        os.mkdir(OUTPUT_PATH / "trends")
-    for disparity_name, fig in trends_per_disparity.items():
-        fig.savefig(OUTPUT_PATH / "trends" / f"{disparity_name}_trend.png", dpi=500)
-
-    if not (OUTPUT_PATH / "regression_plots").is_dir():
-        os.mkdir(OUTPUT_PATH / "regression_plots")
-    for variance, fig in regression_plots.items():
-        fig.savefig(OUTPUT_PATH / "regression_plots" / f"{variance}.png", dpi=500)
-
-    if not (OUTPUT_PATH / "ecdf_plots").is_dir():
-        os.mkdir(OUTPUT_PATH / "ecdf_plots")
-    for variance, fig in ecdf_plots.items():
-        fig.savefig(OUTPUT_PATH / "ecdf_plots" / f"{variance}.png", dpi=500)
     print("6. Done")
-
 
