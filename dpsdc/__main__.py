@@ -114,7 +114,7 @@ def download():
         template_query = open(PROCEDURES_PATH / "cohort.sql", "r").read()
         query = template_query.format(cohort_criteria)
 
-        credentials = pydata_google_auth.get_user_credentials(
+        credentials = pydata_google_auth.default(
             ['https://www.googleapis.com/auth/bigquery'],
             use_local_webserver=False
         )
