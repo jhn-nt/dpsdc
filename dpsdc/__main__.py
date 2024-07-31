@@ -23,6 +23,8 @@ from argparse import ArgumentParser
 from tableone import TableOne
 from hashlib import sha256
 
+import pydata_google_auth 
+
 from .loaders import (
     load_table_one,
     load_proxy,
@@ -111,8 +113,14 @@ def download():
 
         template_query = open(PROCEDURES_PATH / "cohort.sql", "r").read()
         query = template_query.format(cohort_criteria)
-        pd.read_gbq(query, project_id=PROJECT_ID).to_pickle(DATA_PATH / "cohort.pkl")
-        pd.read_gbq(proxy_query, project_id=PROJECT_ID).to_pickle(
+
+        credentials = pydata_google_auth.get_user_credentials(
+            ['https://www.googleapis.com/auth/bigquery'],
+            use_local_webserver=False
+        )
+
+        pd.read_gbq(query, project_id=PROJECT_ID,credentials=credentials).to_pickle(DATA_PATH / "cohort.pkl")
+        pd.read_gbq(proxy_query, project_id=PROJECT_ID,credentials=credentials).to_pickle(
             DATA_PATH / "proxy.pkl"
         )
 
