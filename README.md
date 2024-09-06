@@ -17,7 +17,7 @@ __Important Note__: The google account enabled to access the MIMIC-IV must the b
 1. dry run, completed in a couple of minutes: `python3 -m dpsdc -p <your project-id> --dry` 
 2. to run  the whole experiment (ca 2 hours), use: `python3 -m dpsdc -p <your project-id>` 
 
-### Digging Deeper  
+### Delving Deeper  
 The above code will run the experiment for a cohort of ventilated patients using weight as a disparity axis and frequency of turnings as a proxy. To test it on a different group run:
 ```python
 python3 -m dpsdc -p <your project-id> -i /path/to/info.json -dp /path/to/proxy.sql -c /path/to/criteria.sql 
@@ -31,7 +31,7 @@ where:
 See the example below:
 ```json
 {
-    "proxy_name":"Mouthcare",
+    "proxy_name":"Turnings",
     "disparities_axis_name":"Weight",
     "disparities_axis_uom":"Kg(s)",
     "protocol__hours":2
