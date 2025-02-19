@@ -3,9 +3,9 @@ from setuptools import setup
 
 setup(
     name="dpsdc",
-    version="0.14.3",
-    description="TBD",
-    author="TBD A. Carrel, G. Angelotti, L.L. Weishaupt, L.M. Hampton, N. Dundas, P. Morandini, J. Byers, J. Gallifant, L.A. Celi",
+    version="0.14.4",
+    description="Code for Care Phenotypes In Critical Care",
+    author="LL. Weishaupt, T. Wang,  J. Schamroth,  P. Morandini,  J. Matos, LM Hampton,  J. Gallifant,  A. Fiske,  N. Dundas,  K. David,  LA. Celi,  A. Carrel, J. Byers,  G. Angelotti",
     packages=["dpsdc"],
     include_package_data=True,
     python_requires="==3.10.13",

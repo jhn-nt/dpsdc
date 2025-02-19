@@ -1,5 +1,7 @@
-# Adherence to Frequency of Turnings Protocol in Mechanically Ventilated Patients in MIMIC-IV
-###
+# Care Phenotypes In Critical Care
+LL. Weishaupt, T. Wang,  J. Schamroth,  P. Morandini,  J. Matos, LM Hampton,  J. Gallifant,  A. Fiske,  N. Dundas,  K. David,  LA. Celi,  A. Carrel, J. Byers,  G. Angelotti
+
+Code for the _Care Phenotypes In Critical Care_ article, available in [preprint](https://www.medrxiv.org/content/10.1101/2025.01.24.25320468v1).  
 
 
 

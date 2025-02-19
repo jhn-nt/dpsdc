@@ -10,3 +10,4 @@ dpsdc/dashboard.py
 requirements.txt
 *.egg-info
 build/
+gcloud.sh
